@@ -10,6 +10,8 @@ from databricks.vector_search.client import VectorSearchClient
 from rag_lib.secret_functions import *
 from rag_lib.config import *
 from rag_lib.text_utils import *
+from rag_lib.business_glossary import *
+from rag_lib.llm import *
 
 # Clients
 vsc = VectorSearchClient()
@@ -22,13 +24,6 @@ print("VS index:", VS_INDEX_FULL_NAME)
 print("Embedding endpoint:", EMBED_ENDPOINT)
 print("LLM endpoint:", LLM_ENDPOINT)
 
-# -------------------------
-# CELL 1: Helper functions (LLM call)
-# -------------------------
-def call_chat(endpoint: str, messages: List[Dict[str, str]], temperature: float, max_tokens: int) -> str:
-    payload = {"messages": messages, "temperature": temperature, "max_tokens": max_tokens}
-    resp = client.predict(endpoint=endpoint, inputs=payload)
-    return extract_chat_content(resp)
 
 # -------------------------
 # CELL 2: Query expansion (ES -> keywords + EN)
@@ -449,7 +444,7 @@ def extract_evidence(query: str, hits: List[Dict[str, Any]]) -> Dict[str, Any]:
             seen_kp.add(claim)
     parsed["key_points"] = uniq_kp[:6]
 
-    return parsed
+    return parsed 
 
 # -------------------------
 # CELL 9: Respuesta con evidencia
@@ -457,7 +452,7 @@ def extract_evidence(query: str, hits: List[Dict[str, Any]]) -> Dict[str, Any]:
 def answer_from_evidence(query: str, hits: List[Dict[str, Any]], evidence: Dict[str, Any]) -> str:
     """
     Respuesta directa y factual.
-    - Modo 'comparativo/generico': resumen por segmento + desglose + lectura rápida.
+    - Modo 'comparativo/generico': resumen por elemento + desglose + lectura rápida.
     - Modo 'focalizado': 1 línea + bullets factuales.
     Sin recomendaciones ni próximos pasos.
     """
@@ -475,7 +470,8 @@ def answer_from_evidence(query: str, hits: List[Dict[str, Any]], evidence: Dict[
     mode = "comparative" if (is_comparative and focused_segment is None) else "focused"
 
     system = (
-        "Eres un asistente de QA sobre reportes corporativos (RAG). "
+        "Eres una base de conocimiento sobre reportes corporativos (RAG). "
+        "Usa el glosario solo para interpretar términos, pero no lo cites como evidencia. Las afirmaciones sobre hechos deben salir del CONTEXTO/EVIDENCE."
         "Responde de forma directa, detallada y 100% basada en evidencia. "
         "NO des recomendaciones, NO incluyas próximos pasos, NO inventes datos. "
         "Usa SOLO CONTEXTO y EVIDENCE."
@@ -485,7 +481,7 @@ def answer_from_evidence(query: str, hits: List[Dict[str, Any]], evidence: Dict[
     comparative_format = (
         "FORMATO OBLIGATORIO (MODO COMPARATIVO):\n"
         "1) ONE-LINER (1 frase): responde directo qué muestra el documento sobre la comparación solicitada.\n"
-        "2) 'Resumen por segmento' (si el documento lo trae):\n"
+        "2) 'Resumen por elementos' (si el documento lo trae):\n"
         "   - 2 a 6 líneas compactas, una por segmento, con: Segmento: valor (unidad) + variación vs periodo [S#]\n"
         "3) 'Componentes principales por segmento' (solo si hay drivers en el texto):\n"
         "   - Para cada segmento relevante:\n"
@@ -513,9 +509,12 @@ def answer_from_evidence(query: str, hits: List[Dict[str, Any]], evidence: Dict[
         "- No extrapoles entre segmentos.\n"
     )
 
+    gloss = glossary_snippet(query)  # <-- 1) calcular texto del glosario (string)
+
     user = (
         f"Modo: {mode}\n"
         f"Pregunta: {query}\n\n"
+        f"{gloss}\n"
         f"EVIDENCE (JSON):\n{json.dumps(evidence, ensure_ascii=False)}\n\n"
         f"CONTEXTO:\n{context}\n\n"
         f"{comparative_format if mode == 'comparative' else focused_format}"
