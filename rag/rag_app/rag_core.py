@@ -12,6 +12,7 @@ from rag_lib.config import *
 from rag_lib.text_utils import *
 from rag_lib.business_glossary import *
 from rag_lib.llm import *
+from rag_lib.lexical_fallback import *
 
 # Clients
 vsc = VectorSearchClient()

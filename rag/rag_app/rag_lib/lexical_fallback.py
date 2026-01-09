@@ -132,4 +132,6 @@ def lexical_fallback(query: str, hits: List[Dict[str, Any]], limit: int = LEX_FA
         seen.add(key)
         merged.append(h)
 
+        print(f"lexical_fallback: {len(merged)} hits")
+
     return merged
