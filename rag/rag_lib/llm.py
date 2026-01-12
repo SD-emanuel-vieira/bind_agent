@@ -5,6 +5,8 @@ from typing import Any, Dict, List, Optional, Tuple
 import os
 import requests
 import mlflow.deployments
+from rag_lib.text_utils import extract_chat_content
+from rag_lib.config import *
 
 # LLM call to chat
 def call_chat(endpoint: str, messages: List[Dict[str, str]], temperature: float, max_tokens: int) -> str:

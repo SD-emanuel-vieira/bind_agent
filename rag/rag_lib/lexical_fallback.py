@@ -5,9 +5,8 @@ from typing import Any, Dict, List, Optional, Tuple
 import os
 import requests
 import mlflow.deployments
-from mlflow.utils.databricks_utils import get_databricks_host_creds
-from databricks.vector_search.client import VectorSearchClient
-from rag_lib.text_utils import *
+from rag_lib.text_utils import extract_chat_content
+from rag_lib.config import *
 
 # -------------------------
 # CELL 3: Lexical fallback via Vector Search FULL_TEXT (serving-friendly)
@@ -132,6 +131,6 @@ def lexical_fallback(query: str, hits: List[Dict[str, Any]], limit: int = LEX_FA
         seen.add(key)
         merged.append(h)
 
-        print(f"lexical_fallback: {len(merged)} hits")
+    # print(f"lexical_fallback: {len(merged)} hits")
 
     return merged

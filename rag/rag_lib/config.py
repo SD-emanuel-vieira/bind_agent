@@ -22,7 +22,7 @@ LLM_ENDPOINT = _get_env("RAG_LLM_ENDPOINT")
 # --- Retrieval params ---
 TOP_K_CANDIDATES = int(_get_env("RAG_TOP_K_CANDIDATES"))
 TOP_K_FINAL = int(_get_env("RAG_TOP_K_FINAL"))
-LEX_FALLBACK_LIMIT = int(_get_env("RAG_LEX_FALLBACK_LIMIT"))
+LEX_FALLBACK_LIMIT = int(_get_env("RAG_LEX_FALLBACK_LIMIT","20"))
 
 # --- Prompt/context limits ---
 MAX_CONTEXT_CHARS = int(_get_env("RAG_MAX_CONTEXT_CHARS"))

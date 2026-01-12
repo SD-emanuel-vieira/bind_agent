@@ -18,7 +18,7 @@ BUSINESS_GLOSSARY_V2 = {
     "E":   {"desc": "Estimado", "aliases": []},
     "IPC": {"desc": "Índice de Precios al Consumidor", "aliases": []},
     "Lefi 1d": {"desc": "Letras de Liquidez (LEFI) con liquidación diaria.", "aliases": []},
-    "ROA": {"desc": "Return on Assets / Retorno sobre Activos", "aliases": []},
+    "ROA": {"desc": "Return on Assets / Retorno sobre Activos", "aliases": ["roa","retorno sobre activos"]},
     "ROE": {"desc": "Return on Equity / Retorno sobre Patrimonio", "aliases": []},
     "Com": {"desc": "Comisiones", "aliases": []},
     "ARS": {"desc": "Pesos Argentinos", "aliases": []},
@@ -27,7 +27,7 @@ BUSINESS_GLOSSARY_V2 = {
     "YTD": {"desc": "Year to Date / Año hasta la fecha", "aliases": []},
     "Xsell": {"desc": "Cross Sell", "aliases": []},
     "Bi":  {"desc": "Billones", "aliases": []},
-    "MF":  {"desc": "Margen Financiero", "aliases": ["márgen financiero", "margen financiero"]},
+    "MF":  {"desc": "Margen Financiero", "aliases": ["margen financiero"]},
     "FX":  {"desc": "Forex / Foreign Exchange", "aliases": []},
     "AxI": {"desc": "Ajustado por Inflación", "aliases": []},
     "TNA": {"desc": "Tasa Nominal Anual", "aliases": []},
@@ -105,3 +105,65 @@ def glossary_snippet(query: str, max_terms: int = 12, fuzzy_threshold: float = 0
     for ac in found:
         lines.append(f"- {ac}: {BUSINESS_GLOSSARY_V2[ac]['desc']}")
     return "\n".join(lines)
+
+def glossary_expand_terms(query: str, max_terms: int = 12, fuzzy_threshold: float = 0.88) -> dict:
+    """
+    Devuelve:
+      {
+        "acronyms": ["ROA", ...],            # canónicos detectados
+        "terms": ["ROA", "roa", "retorno sobre activos", ...]  # para expansión
+      }
+    Reusa la misma lógica de matching que glossary_snippet().
+    """
+    q_raw = (query or "").strip()
+    if not q_raw:
+        return {"acronyms": [], "terms": []}
+
+    q = _norm(q_raw)
+
+    found = []
+    for acronym, obj in BUSINESS_GLOSSARY_V2.items():
+        aliases = obj.get("aliases", [])
+        candidates = [acronym] + list(aliases)
+        for a in candidates:
+            if _norm(a) in q:
+                found.append(acronym)
+                break
+
+    if not found:
+        tokens = q.split()
+        for acronym, obj in BUSINESS_GLOSSARY_V2.items():
+            best = 0.0
+            for a in [acronym] + list(obj.get("aliases", [])):
+                an = _norm(a)
+                if not an:
+                    continue
+                best = max(best, SequenceMatcher(None, an, q).ratio())
+                if " " not in an:
+                    for t in tokens:
+                        best = max(best, SequenceMatcher(None, an, t).ratio())
+            if best >= fuzzy_threshold:
+                found.append(acronym)
+
+    found = list(dict.fromkeys(found))[:max_terms]
+    if not found:
+        return {"acronyms": [], "terms": []}
+
+    # Terms de expansión: canónico + aliases
+    terms = []
+    for ac in found:
+        terms.append(ac)
+        terms.extend(BUSINESS_GLOSSARY_V2[ac].get("aliases", []))
+
+    # dedupe (preserva orden) + filtra vacíos
+    out = []
+    seen = set()
+    for t in terms:
+        tn = _norm(t)
+        if not tn or tn in seen:
+            continue
+        seen.add(tn)
+        out.append(t)
+
+    return {"acronyms": found, "terms": out}
+
