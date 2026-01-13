@@ -4,9 +4,9 @@ import time
 from typing import Any, Dict, List, Optional, Tuple
 import os
 import requests
-import mlflow.deployments
-from rag_lib.text_utils import extract_chat_content
+from mlflow.utils.databricks_utils import get_databricks_host_creds
 from rag_lib.config import *
+from rag_lib.text_utils import *
 
 # -------------------------
 # CELL 3: Lexical fallback via Vector Search FULL_TEXT (serving-friendly)

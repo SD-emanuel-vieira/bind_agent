@@ -10,9 +10,12 @@ from databricks.vector_search.client import VectorSearchClient
 from rag_lib.secret_functions import *
 from rag_lib.config import *
 from rag_lib.text_utils import *
-from rag_lib.business_glossary import *
-from rag_lib.llm import *
-# from rag_lib.lexical_fallback import *
+from rag_lib.lexical_fallback import _get_dbx_auth, _vs_full_text_query, lexical_fallback
+from rag_lib.business_glossary import BUSINESS_GLOSSARY_V2
+from rag_lib.glossary_helper import glossary_snippet, glossary_expand_terms, prepare_rerank_candidates_glossary_aware
+from rag_lib.llm import call_chat, expand_query_for_retrieval
+from rag_lib.embeddings import embed_query
+from rag_lib.rerank import rerank_with_llm
 
 # Clients
 vsc = VectorSearchClient()
@@ -24,180 +27,6 @@ print("VS endpoint:", VS_ENDPOINT)
 print("VS index:", VS_INDEX_FULL_NAME)
 print("Embedding endpoint:", EMBED_ENDPOINT)
 print("LLM endpoint:", LLM_ENDPOINT)
-
-# -------------------------
-# CELL 3: Lexical fallback via Vector Search FULL_TEXT (serving-friendly)
-# - No Spark required (works in Model Serving)
-# - Queries the same Vector Search index using query_type=FULL_TEXT
-# - Merges + dedupes with existing hits
-# -------------------------
-def _get_dbx_auth() -> Tuple[str, str]:
-    """Get Databricks host + token.
-
-    Priority:
-      1) Env vars: DATABRICKS_HOST/WORKSPACE_URL + DATABRICKS_TOKEN/TOKEN
-      2) MLflow Databricks creds (works in Databricks notebooks)
-      3) Notebook context token (best-effort)
-    """
-    host = (os.getenv("DATABRICKS_HOST") or os.getenv("WORKSPACE_URL") or "").rstrip("/")
-    token = os.getenv("DATABRICKS_TOKEN") or os.getenv("TOKEN") or ""
-
-    # 2) MLflow helper (usually works in Databricks notebooks)
-    if not host or not token:
-        try:
-            # from mlflow.utils.databricks_utils import get_databricks_host_creds
-            creds = get_databricks_host_creds()
-            host = host or (getattr(creds, "host", "") or "").rstrip("/")
-            token = token or (getattr(creds, "token", "") or "")
-        except Exception:
-            pass
-
-    # 3) Notebook context fallback (best-effort)
-    if not host or not token:
-        try:
-            # Only import pyspark in notebook clusters; in serving this may not exist
-            from pyspark.sql import SparkSession
-            spark = SparkSession.getActiveSession() or SparkSession.builder.getOrCreate()
-            if not host:
-                host = ("https://" + spark.conf.get("spark.databricks.workspaceUrl")).rstrip("/")
-            if not token:
-                # dbutils available in notebooks
-                token = dbutils.notebook.entry_point.getDbutils().notebook().getContext().apiToken().get()
-        except Exception:
-            pass
-
-    if not host or not token:
-        raise RuntimeError(
-            "Missing Databricks auth. Set DATABRICKS_HOST + DATABRICKS_TOKEN (or run inside a Databricks notebook)."
-        )
-
-    return host, token
-
-def _vs_full_text_query(
-    index_name: str,
-    query_text: str,
-    columns: List[str],
-    num_results: int,
-    filters: Optional[Any] = None,
-) -> List[Dict[str, Any]]:
-    """Call Vector Search REST API for FULL_TEXT queries and return rows as list[dict]."""
-    host, token = _get_dbx_auth()
-    url = f"{host}/api/2.0/vector-search/indexes/{index_name}/query"
-
-    payload: Dict[str, Any] = {
-        "query_text": query_text,
-        "query_type": "FULL_TEXT",
-        "columns": columns,
-        "num_results": min(int(num_results), 200),
-    }
-    if filters is not None:
-        payload["filters"] = filters
-
-    resp = requests.post(
-        url,
-        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
-        json=payload,
-        timeout=15,
-    )
-    resp.raise_for_status()
-    data = resp.json()
-
-    result = data.get("result") or data
-    colnames = result.get("column_names") or columns
-    rows = result.get("data_array") or result.get("data") or []
-
-    out: List[Dict[str, Any]] = []
-    for row in rows:
-        d = {colnames[i]: row[i] for i in range(min(len(colnames), len(row)))}
-        out.append(d)
-    return out
-
-def lexical_fallback(query: str, hits: List[Dict[str, Any]], limit: int = LEX_FALLBACK_LIMIT) -> List[Dict[str, Any]]:
-    """Best-effort: agrega matches lexicográficos desde Vector Search index (FULL_TEXT)."""
-    q = (query or "").strip()
-    if not q:
-        return hits
-
-    try:
-        rows = _vs_full_text_query(
-            index_name=VS_INDEX_FULL_NAME,
-            query_text=q,
-            columns=VS_COLUMNS,
-            num_results=limit,
-            filters=None,
-        )
-    except Exception as e:
-        # If serving env doesn't have auth configured, do not break main flow.
-        print("Lexical FULL_TEXT fallback failed. Error:", repr(e))
-        return hits
-
-    lex_hits: List[Dict[str, Any]] = []
-    for d in rows:
-        raw = (d.get("chunk_text") or "").strip()
-        d["chunk_text_clean"] = strip_chunk_prefix(raw)
-        lex_hits.append(d)
-
-    # merge + dedupe por chunk_id (primero mantiene orden de hits existentes)
-    merged: List[Dict[str, Any]] = []
-    seen = set()
-    for h in hits + lex_hits:
-        cid = h.get("chunk_id")
-        key = cid if cid is not None else (h.get("path"), h.get("page_id"), h.get("page_num"))
-        if key in seen:
-            continue
-        seen.add(key)
-        merged.append(h)
-
-    # print(f"lexical_fallback: {len(merged)} hits")
-
-    return merged
-
-
-# -------------------------
-# CELL 4: Embeddings for query_vector (Model Serving friendly)
-# -------------------------
-def embed_query(text: str) -> Optional[List[float]]:
-    """Return embedding vector for a single string using the Databricks embeddings endpoint."""
-    t = (text or "").strip()
-    if not t:
-        return None
-
-    try:
-        client = mlflow.deployments.get_deploy_client("databricks")
-        # Most Databricks embeddings endpoints accept {"input": ["..."]} or {"input": "..."}
-        try:
-            res = client.predict(endpoint=EMBED_ENDPOINT, inputs={"input": [t]})
-        except Exception:
-            res = client.predict(endpoint=EMBED_ENDPOINT, inputs={"input": t})
-    except Exception as e:
-        raise
-
-    # Normalize common response shapes
-    if isinstance(res, dict):
-        # OpenAI-like: {"data":[{"embedding":[...]}]}
-        data = res.get("data")
-        if isinstance(data, list) and data:
-            first = data[0]
-            if isinstance(first, dict) and "embedding" in first:
-                return first["embedding"]
-            if isinstance(first, list):
-                return first
-
-        # Some endpoints: {"predictions":[...]} or {"embeddings":[...]}
-        for k in ("predictions", "embeddings", "output"):
-            v = res.get(k)
-            if isinstance(v, list) and v:
-                first = v[0]
-                if isinstance(first, dict) and "embedding" in first:
-                    return first["embedding"]
-                if isinstance(first, list):
-                    return first
-
-    # If already a list
-    if isinstance(res, list) and res and isinstance(res[0], (float, int)):
-        return res  # type: ignore[return-value]
-
-    return None
 
 
 # -------------------------
@@ -265,77 +94,6 @@ def retrieve_candidates(query: str, k: int = TOP_K_CANDIDATES) -> List[Dict[str,
     merged.sort(key=lambda h: (h.get("file_date") is not None, h.get("file_date")), reverse=True)
 
     return merged
-
-# -------------------------
-# CELL 6: Reranking with LLM
-# -------------------------
-def rerank_with_llm(query: str, hits: List[Dict[str, Any]], top_k: int = TOP_K_FINAL) -> List[Dict[str, Any]]:
-    if not hits:
-        return []
-
-    items = []
-    for idx, h in enumerate(hits, start=1):
-        sid = f"S{idx}"
-        snippet = shorten(h.get("chunk_text_clean", ""), RERANK_SNIPPET_CHARS)
-        meta = (
-            f'file_date={h.get("file_date")}, '
-            f'path="{h.get("path")}", page_num={h.get("page_num")}, topic="{h.get("topic")}"'
-        )
-        items.append({"sid": sid, "meta": meta, "snippet": snippet, "hit": h})
-
-    system = (
-        "Eres un motor de reranking para recuperación de información.\n"
-        "Ordena extractos por relevancia para responder la pregunta.\n"
-        "Devuelve SOLO JSON válido, sin texto adicional."
-    )
-
-    user_lines = [f"Pregunta:\n{query}\n", "Candidatos:"]
-    for it in items:
-        user_lines.append(f"{it['sid']} | {it['meta']}\n{it['snippet']}\n")
-
-    user_lines.append(
-        "Devuelve JSON EXACTO:\n"
-        "{\n"
-        '  "ranked_sids": ["S3","S1",...],\n'
-        '  "reasons": {"S3":"...", "S1":"..."}\n'
-        "}\n"
-        f"- ranked_sids debe incluir como máximo {top_k} ids.\n"
-        "- Prioriza coincidencia literal con palabras clave del query si existe.\n"
-        "- En caso de empate de relevancia, prioriza file_date más reciente.\n"
-    )
-
-    content = call_chat(
-        endpoint=LLM_ENDPOINT,
-        messages=[{"role":"system","content":system},{"role":"user","content":"\n".join(user_lines)}],
-        temperature=TEMPERATURE_RERANK,
-        max_tokens=650
-    )
-
-    parsed = safe_json_load(content)
-    ranked = parsed.get("ranked_sids", [])
-
-    if not ranked or not isinstance(ranked, list):
-        return hits[:top_k]
-
-    sid_to_hit = {f"S{i+1}": items[i]["hit"] for i in range(len(items))}
-    reranked = [sid_to_hit[sid] for sid in ranked if sid in sid_to_hit]
-
-    # fill up if needed
-    if len(reranked) < top_k:
-        seen = set(h.get("chunk_id") for h in reranked)
-        for h in hits:
-            if h.get("chunk_id") not in seen:
-                reranked.append(h)
-                if len(reranked) >= top_k:
-                    break
-    
-    # Siempre se ordena las evidencias por fecha de archivo, tomando el más reciente primero
-    reranked.sort(
-        key=lambda h: (h.get("file_date") is not None, h.get("file_date")),
-        reverse=True
-    )
-
-    return reranked[:top_k]
 
 # -------------------------
 # CELL 7: Build context (with [S#] citations)
@@ -468,11 +226,13 @@ def answer_from_evidence(query: str, hits: List[Dict[str, Any]], evidence: Dict[
     mode = "comparative" if (is_comparative and focused_segment is None) else "focused"
 
     system = (
-        "Eres una base de conocimiento sobre reportes corporativos (RAG). "
-        "Usa el glosario solo para interpretar términos, pero no lo cites como evidencia. Las afirmaciones sobre hechos deben salir del CONTEXTO/EVIDENCE."
-        "Responde de forma directa, detallada y 100% basada en evidencia. "
-        "NO des recomendaciones, NO incluyas próximos pasos, NO inventes datos. "
-        "Usa SOLO CONTEXTO y EVIDENCE."
+        "Eres una base de conocimiento sobre reportes corporativos (RAG). \n"
+        "Usa el glosario solo para interpretar términos, pero no lo cites como evidencia. Las afirmaciones sobre hechos deben salir del CONTEXTO/EVIDENCE.\n"
+        "Responde de forma directa, detallada y 100% basada en evidencia. \n"
+        "NO des recomendaciones, NO incluyas próximos pasos, NO inventes datos. \n"
+        "Usa SOLO CONTEXTO y EVIDENCE.\n"
+        "- Segmento y banca son sinónimos.\n"
+        "- Si en la consulta no especifican tiempo, que la respuesta traiga el dato del último mes y el acumulado del año.\n"
     )
 
     # Plantilla para modo comparativo (más parecido a tu ejemplo)
@@ -535,12 +295,19 @@ def answer_from_evidence(query: str, hits: List[Dict[str, Any]], evidence: Dict[
 # CELL 10: Orchestrator (end-to-end RAG)
 # -------------------------
 def answer_with_rag(query: str) -> Dict[str, Any]:
-    candidates = retrieve_candidates(query, k=TOP_K_CANDIDATES) or []
-    top_hits = rerank_with_llm(query, candidates, top_k=TOP_K_FINAL) or candidates[:TOP_K_FINAL]
+    # Posibles candidatos para la respuesta:
+    candidates = retrieve_candidates(query, k=TOP_K_CANDIDATES) or [] 
+    # Preprocesamiento de candidatos glossary-aware:
+    TOP_K_RERANK_INPUT = max(TOP_K_FINAL * 3, TOP_K_FINAL + 12) 
+    hits_for_rerank = prepare_rerank_candidates_glossary_aware(query, candidates, max_input=TOP_K_RERANK_INPUT) 
+    # Reranking en base a las reglas definidas:
+    top_hits = rerank_with_llm(query, hits_for_rerank, top_k=TOP_K_FINAL) or candidates[:TOP_K_FINAL] 
+    # Se contruye la evidencia:
     evidence = extract_evidence(query, top_hits)
+    # Se arma la respuesta final:
     answer = answer_from_evidence(query, top_hits, evidence)
-
-    _, citations = build_context(top_hits, max_chars=MAX_CONTEXT_CHARS)
+    # Se construye el contexto:
+    _, citations = build_context(top_hits, max_chars=MAX_CONTEXT_CHARS) 
 
     return {
         "query": query,
