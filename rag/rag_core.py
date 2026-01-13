@@ -209,8 +209,29 @@ def retrieve_candidates(query: str, k: int = TOP_K_CANDIDATES) -> List[Dict[str,
 
     # 1) Try vector search (best effort)
     try:
-        q_expanded = expand_query_for_retrieval(query) or query
-        qvec = embed_query(q_expanded)
+        # q_expanded = expand_query_for_retrieval(query) or query
+        # qvec = embed_query(q_expanded)
+
+        gl = glossary_expand_terms(query)
+        terms = gl.get("terms", []) or []
+
+        q_llm = expand_query_for_retrieval(query) or query
+
+        # Query para embeddings/vector: más rica (mejor semántica)
+        q_embed = q_llm
+        if terms:
+            q_embed = q_embed + "\n\nGLOSSARY TERMS: " + " | ".join(terms)
+
+        # Query para FULL_TEXT: más literal (mejor keyword match)
+        q_fulltext = query
+        if terms:
+            # opcional: entrecomillar términos multi-palabra ayuda en búsquedas FULL_TEXT
+            def _qt(t: str) -> str:
+                t = (t or "").strip()
+                return f'"{t}"' if " " in t else t
+            q_fulltext = q_fulltext + " " + " ".join(_qt(t) for t in terms)
+
+        qvec = embed_query(q_embed)
 
         if qvec:
             res = index.similarity_search(
@@ -229,7 +250,7 @@ def retrieve_candidates(query: str, k: int = TOP_K_CANDIDATES) -> List[Dict[str,
         hits = []
 
     # 2) Always add lexical fallback (FULL_TEXT)
-    hits = lexical_fallback(query, hits, limit=LEX_FALLBACK_LIMIT)
+    hits = lexical_fallback(q_fulltext, hits, limit=LEX_FALLBACK_LIMIT)
 
     # 3) Merge + dedupe by chunk_id
     merged = []
