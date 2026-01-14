@@ -143,38 +143,137 @@ def glossary_bonus(hit: dict, terms: list[str]) -> int:
             bonus += 3 if " " in term else 1
     return bonus
 
+# def prepare_rerank_candidates_glossary_aware(
+#     query: str,
+#     hits: List[Dict[str, Any]],
+#     max_input: int,
+# ) -> List[Dict[str, Any]]:
+#     # from rag_lib.business_glossary import glossary_expand_terms, _norm
+
+#     gl = glossary_expand_terms(query)
+#     terms = gl.get("terms", []) or []
+#     if not terms or not hits:
+#         return hits[:max_input]
+
+#     def bonus(h: Dict[str, Any]) -> int:
+#         txt = h.get("chunk_text_clean") or h.get("chunk_text") or ""
+#         tn = _norm(txt)
+#         b = 0
+#         for t in terms:
+#             tt = _norm(t)
+#             if not tt:
+#                 continue
+#             if tt in tn:
+#                 b += 3 if " " in t else 1
+#         return b
+
+#     def base_score(h: Dict[str, Any]) -> float:
+#         # ajustá según tu schema real
+#         return float(h.get("score") or h.get("similarity") or 0.0)
+
+#     # anotamos bonus para debug si querés
+#     for h in hits:
+#         h["_glossary_bonus"] = bonus(h)
+
+#     ranked = sorted(hits, key=lambda h: (h["_glossary_bonus"], base_score(h)), reverse=True)
+#     return ranked[:max_input]
+
 def prepare_rerank_candidates_glossary_aware(
     query: str,
     hits: List[Dict[str, Any]],
     max_input: int,
 ) -> List[Dict[str, Any]]:
-    # from rag_lib.business_glossary import glossary_expand_terms, _norm
 
     gl = glossary_expand_terms(query)
     terms = gl.get("terms", []) or []
     if not terms or not hits:
         return hits[:max_input]
 
-    def bonus(h: Dict[str, Any]) -> int:
+    # --- 1) separar anchors: frases vs tokens (acrónimos)
+    phrases = []
+    tokens = []
+
+    for t in terms:
+        t = (t or "").strip()
+        if not t:
+            continue
+        if " " in t:
+            phrases.append(t)
+        else:
+            # solo tokens "fuertes": acrónimos cortos o con %/puntos
+            tl = t.lower()
+            if len(tl) <= 5 or "%" in t or "." in t:
+                tokens.append(t)
+
+    # dedupe por normalización
+    def _dedupe(xs):
+        out, seen = [], set()
+        for x in xs:
+            xn = _norm(x)
+            if not xn or xn in seen:
+                continue
+            seen.add(xn)
+            out.append(x)
+        return out
+
+    phrases = _dedupe(phrases)
+    tokens  = _dedupe(tokens)
+
+    # Si no hay anchors fuertes, no hacemos nada
+    if not phrases and not tokens:
+        return hits[:max_input]
+
+    # --- 2) compilar regex estrictos
+    def _phrase_pattern(p: str) -> re.Pattern:
+        # normalizamos y escapamos, y exigimos límites de palabra
+        # "retorno sobre patrimonio" -> r"\bretorno\b\s+\bsobre\b\s+\bpatrimonio\b"
+        pn = _norm(p)
+        parts = [re.escape(w) for w in pn.split() if w]
+        if not parts:
+            return None
+        rx = r"\b" + r"\b\s+\b".join(parts) + r"\b"
+        return re.compile(rx, flags=re.IGNORECASE)
+
+    phrase_pats = [pp for pp in (_phrase_pattern(p) for p in phrases) if pp is not None]
+
+    token_pats = []
+    for t in tokens:
+        tn = _norm(t)
+        if not tn:
+            continue
+        # \broe\b match exacto
+        token_pats.append(re.compile(rf"\b{re.escape(tn)}\b", flags=re.IGNORECASE))
+        # opcional: permitir "roe%" si no lo pusiste explícito como alias
+        token_pats.append(re.compile(rf"\b{re.escape(tn)}\s*%", flags=re.IGNORECASE))
+
+    # --- 3) scoring: frases pesan mucho más que tokens
+    def anchor_matches(h: Dict[str, Any]) -> tuple[int, int]:
         txt = h.get("chunk_text_clean") or h.get("chunk_text") or ""
         tn = _norm(txt)
-        b = 0
-        for t in terms:
-            tt = _norm(t)
-            if not tt:
-                continue
-            if tt in tn:
-                b += 3 if " " in t else 1
-        return b
+
+        phrase_hits = sum(1 for pat in phrase_pats if pat.search(tn))
+        token_hits  = sum(1 for pat in token_pats  if pat.search(tn))
+        return phrase_hits, token_hits
 
     def base_score(h: Dict[str, Any]) -> float:
-        # ajustá según tu schema real
         return float(h.get("score") or h.get("similarity") or 0.0)
 
-    # anotamos bonus para debug si querés
     for h in hits:
-        h["_glossary_bonus"] = bonus(h)
+        ph, tk = anchor_matches(h)
+        h["_glossary_phrase_hits"] = ph
+        h["_glossary_token_hits"] = tk
 
-    ranked = sorted(hits, key=lambda h: (h["_glossary_bonus"], base_score(h)), reverse=True)
+        # frases mandan; tokens ayudan pero no ganan solos
+        bonus = ph * 50 + tk * 5
+
+        # penalización fuerte si no hay frases NI tokens (evita "patrimonio neto")
+        penalty = 30 if (ph == 0 and tk == 0) else 0
+
+        h["_glossary_bonus"] = bonus - penalty
+
+    ranked = sorted(
+        hits,
+        key=lambda h: (h["_glossary_bonus"], base_score(h)),
+        reverse=True
+    )
     return ranked[:max_input]
-
