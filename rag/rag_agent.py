@@ -1,6 +1,4 @@
-# from rag_lib.secret_functions import *
-# from rag_lib.config import *
-from rag_core import *
+from rag_lib.rag_core import *
 
 # -------------------------
 # MLflow PyFunc Model
