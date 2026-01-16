@@ -40,5 +40,12 @@ RETRY_SLEEP_SECS = float(_get_env("RAG_RETRY_SLEEP_SECS"))
 # Columns we want back from Vector Search (both vector + FULL_TEXT fallback)
 VS_COLUMNS = [
     "chunk_id","doc_id","path","file_date","file_type",
-    "page_id","page_num","topic","chunk_text"
+    "page_id","page_num","topic","chunk_text","chunk_type"
 ]
+
+# Para estos chunk_type, se EXIGE que la query contenga al menos 1 keyword.
+CHUNK_TYPE_QUERY_GATES = {
+    "figure_enriched": ["evolución", "evolucion", "tendencia", "trend", "evolution", "variación", "variacion"],
+    # en el futuro podés sumar más tipos:
+    # "time_series_commentary": ["mensual", "yoy", "mom", "histórico", "historico"],
+}

@@ -15,6 +15,60 @@ def tie_break_by_date_in_blocks(hits, block_size=2):
         out.extend(block)
     return out
 
+# ---- Funciones que permiten excluir chunks sin anchor
+_STOP = {"cual","cuál","cuales","cuáles","son","es","de","del","la","el","los","las",
+         "para","por","en","un","una","y","o","que","qué"}
+
+_MONTHS = {"enero","febrero","marzo","abril","mayo","junio","julio","agosto",
+           "septiembre","octubre","noviembre","diciembre"}
+
+def _norm_simple(s: str) -> str:
+    s = (s or "").lower()
+    s = "".join(ch for ch in unicodedata.normalize("NFKD", s) if not unicodedata.combining(ch))
+    s = re.sub(r"\s+", " ", s).strip()
+    return s
+
+def query_anchors(query: str) -> list[str]:
+    qn = _norm_simple(query)
+    toks = re.findall(r"[a-z]{4,}", qn)
+    out, seen = [], set()
+    for t in toks:
+        if t in _STOP: 
+            continue
+        if t in _MONTHS:
+            continue
+        if t in seen:
+            continue
+        seen.add(t)
+        out.append(t)
+    return out
+
+def hit_anchor_score(hit: dict, anchors: list[str]) -> int:
+    txt = _norm_simple(hit.get("chunk_text_clean") or hit.get("chunk_text") or "")
+    return sum(1 for a in anchors if a in txt)
+
+# -------- Se refuerza aquellos chunks que tiene un anchor score más alto
+def enforce_anchor_priority(query: str, hits: list[dict]) -> list[dict]:
+    anchors = query_anchors(query)
+    if not anchors or not hits:
+        return hits
+
+    # calcula score
+    max_s = 0
+    for h in hits:
+        s = hit_anchor_score(h, anchors)
+        h["_q_anchor_score"] = s
+        if s > max_s:
+            max_s = s
+
+    # si nadie matchea anchors, no tocamos nada
+    if max_s == 0:
+        return hits
+
+    # stable: conserva el orden relativo que el LLM ya decidió dentro de cada grupo
+    pos = [h for h in hits if h["_q_anchor_score"] > 0]
+    neg = [h for h in hits if h["_q_anchor_score"] == 0]
+    return pos + neg
 # -------------------------
 # CELL 6: Reranking with LLM
 # -------------------------
@@ -78,7 +132,10 @@ def rerank_with_llm(query: str, hits: List[Dict[str, Any]], top_k: int = TOP_K_F
                 if len(reranked) >= top_k:
                     break
     
-    # Se desempatan valores igual de relevantes por fecha del archivo
-    reranked = tie_break_by_date_in_blocks(reranked, block_size=2)
+    # # Se desempatan valores igual de relevantes por fecha del archivo
+    # reranked = tie_break_by_date_in_blocks(reranked, block_size=2)
+
+    # # Se manda para abajo los chunks que no tienen anchor
+    # reranked = enforce_anchor_priority(query, reranked)
 
     return reranked[:top_k]

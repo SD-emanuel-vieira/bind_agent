@@ -143,40 +143,6 @@ def glossary_bonus(hit: dict, terms: list[str]) -> int:
             bonus += 3 if " " in term else 1
     return bonus
 
-# def prepare_rerank_candidates_glossary_aware(
-#     query: str,
-#     hits: List[Dict[str, Any]],
-#     max_input: int,
-# ) -> List[Dict[str, Any]]:
-#     # from rag_lib.business_glossary import glossary_expand_terms, _norm
-
-#     gl = glossary_expand_terms(query)
-#     terms = gl.get("terms", []) or []
-#     if not terms or not hits:
-#         return hits[:max_input]
-
-#     def bonus(h: Dict[str, Any]) -> int:
-#         txt = h.get("chunk_text_clean") or h.get("chunk_text") or ""
-#         tn = _norm(txt)
-#         b = 0
-#         for t in terms:
-#             tt = _norm(t)
-#             if not tt:
-#                 continue
-#             if tt in tn:
-#                 b += 3 if " " in t else 1
-#         return b
-
-#     def base_score(h: Dict[str, Any]) -> float:
-#         # ajustá según tu schema real
-#         return float(h.get("score") or h.get("similarity") or 0.0)
-
-#     # anotamos bonus para debug si querés
-#     for h in hits:
-#         h["_glossary_bonus"] = bonus(h)
-
-#     ranked = sorted(hits, key=lambda h: (h["_glossary_bonus"], base_score(h)), reverse=True)
-#     return ranked[:max_input]
 
 def prepare_rerank_candidates_glossary_aware(
     query: str,

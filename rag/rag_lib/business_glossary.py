@@ -47,14 +47,14 @@ BUSINESS_GLOSSARY_V2 = {
         "tasa ef. mensual", "tasa efectiva mes"
     ]},
 
-    "R":   {"desc": "Real", "aliases": [
-        "real", "reales", "actual", "ejecutado", "realizado", "valor real"
-    ]},
+    # "R":   {"desc": "Real", "aliases": [
+    #     "real", "reales", "actual", "ejecutado", "realizado", "valor real"
+    # ]},
 
-    "E":   {"desc": "Estimado", "aliases": [
-        "estimado", "estimada", "estimacion", "estimación",
-        "proyectado", "proyectada", "estimate", "estimated"
-    ]},
+    # "E":   {"desc": "Estimado", "aliases": [
+    #     "estimado", "estimada", "estimacion", "estimación",
+    #     "proyectado", "proyectada", "estimate", "estimated"
+    # ]},
 
     "IPC": {"desc": "Índice de Precios al Consumidor", "aliases": [
         "indice de precios al consumidor", "índice de precios al consumidor",

@@ -3,6 +3,7 @@ import json
 import time
 from typing import Any, Dict, List, Optional, Tuple
 import os
+import unicodedata
 
 # -------------------------
 # # Helper functions (text cleaning + parsing)
@@ -60,3 +61,31 @@ def parse_vs_similarity_response(res: Any) -> List[Dict[str, Any]]:
     if isinstance(res, list):
         return res
     return []
+
+#### --------- Funciones para filtrar hits por gates (actualmente usado para excluir gráficos)
+def _norm_q(s: str) -> str:
+    s = (s or "").lower()
+    s = "".join(ch for ch in unicodedata.normalize("NFKD", s) if not unicodedata.combining(ch))
+    s = re.sub(r"\s+", " ", s).strip()
+    return s
+
+def filter_hits_by_query_gates(query: str, hits: list[dict], gates: dict[str, list[str]]) -> list[dict]:
+    """
+    Si hit.chunk_type está en `gates`, solo se mantiene si la query contiene alguna keyword permitida.
+    """
+    qn = _norm_q(query)
+    if not qn or not hits:
+        return hits
+
+    out = []
+    for h in hits:
+        ct = (h.get("chunk_type") or "").strip().lower()
+        if ct in gates:
+            allowed = gates.get(ct) or []
+            allowed_norm = [_norm_q(k) for k in allowed if k]
+            if not any(k and k in qn for k in allowed_norm):
+                continue
+        out.append(h)
+
+    # opcional: no vaciar todo si el filtro fue demasiado agresivo
+    return out or hits
