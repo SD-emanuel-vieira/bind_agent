@@ -1,0 +1,52 @@
+resources:
+  jobs:
+    deploy_rag_agent_job:
+      name: deploy_rag_agent
+
+      # trigger:
+      #   # Run this job every day, exactly one day from the last run; see https://docs.databricks.com/api/workspace/jobs/create#trigger
+      #   periodic:
+      #     interval: 1
+      #     unit: DAYS
+
+      parameters:
+        - name: catalog
+          default: ${var.catalog}
+        - name: schema
+          default: ${var.schema}
+
+      # Serverless compute (reutilizable por todas las tasks)
+      environments:
+        - environment_key: agent_deploy
+          spec:
+            environment_version: "2"
+            dependencies:
+              - "databricks-vectorsearch"
+              - "mlflow"
+              - "databricks-sdk"
+
+      tasks:
+        - task_key: deploy_rag_agent
+          notebook_task:
+            notebook_path: ../src/deploy_rag_agent.ipynb
+            base_parameters:
+            # Esto lo usamos para armar rutas al código deployado por el bundle
+              BUNDLE_FILE_PATH: ${workspace.file_path}/src
+              VS_ENDPOINT: ${var.vs_endpoint}
+              VS_INDEX_FULL_NAME: ${var.vs_index_full_name}
+              EMBED_ENDPOINT: ${var.embed_endpoint}
+              LLM_ENDPOINT: ${var.llm_endpoint}
+              TOP_K_CANDIDATES: ${var.top_k_candidates}
+              TOP_K_FINAL: ${var.top_k_final}
+              LEX_FALLBACK_LIMIT: ${var.lex_fallback_limit}
+              MAX_CONTEXT_CHARS: ${var.max_context_chars}
+              RERANK_SNIPPET_CHARS: ${var.rerank_snippet_chars}
+              TEMPERATURE_RERANK: ${var.temperature_rerank}
+              TEMPERATURE_ANSWER: ${var.temperature_answer}
+              MAX_TOKENS_ANSWER: ${var.max_tokens_answer}
+              MAX_RETRIES: ${var.max_retries}
+              RETRY_SLEEP_SECS: ${var.retry_sleep_secs}
+              UC_MODEL_NAME: ${var.uc_model_name}
+              MODEL_SERVING_ENDPOINT: ${var.model_serving_endpoint}
+          
+          environment_key: agent_deploy

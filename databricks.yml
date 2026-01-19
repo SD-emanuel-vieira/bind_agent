@@ -1,0 +1,85 @@
+# This is a Databricks asset bundle definition for bind_agent.
+# See https://docs.databricks.com/dev-tools/bundles/index.html for documentation.
+bundle:
+  name: bind_agent
+  uuid: 72123b22-e7d3-42bd-bef4-2a2c3290a0b5
+
+include:
+  - resources/*.yml
+  - resources/*/*.yml
+
+workspace:
+  root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
+
+# Variable declarations. These variables are assigned in the dev/prod targets below.
+variables:
+  catalog:
+    description: bind_agent
+  schema:
+    description: docs
+
+  vs_endpoint:
+    default: bind_agent_vs
+  vs_index_full_name:
+    default: bind_agent.docs.pdf_chunks_vs_idx
+
+  embed_endpoint:
+    default: databricks-bge-large-en
+  llm_endpoint:
+    default: databricks-gemma-3-12b
+
+  top_k_candidates:
+    default: "40"
+  top_k_final:
+    default: "8"
+  lex_fallback_limit:
+    default: "20"
+
+  max_context_chars:
+    default: "14000"
+  rerank_snippet_chars:
+    default: "1200"
+
+  temperature_rerank:
+    default: "0.0"
+  temperature_answer:
+    default: "0.2"
+  max_tokens_answer:
+    default: "900"
+
+  max_retries:
+    default: "3"
+  retry_sleep_secs:
+    default: "1.0"
+
+  uc_model_name:
+    default: bind_agent.docs.rag_agent
+
+  model_serving_endpoint:
+    default: bind_agent_rag_agent
+    
+targets:
+  dev:
+    # The default target uses 'mode: development' to create a development copy.
+    # - Deployed resources get prefixed with '[dev my_user_name]'
+    # - Any job schedules and triggers are paused by default.
+    # See also https://docs.databricks.com/dev-tools/bundles/deployment-modes.html.
+    mode: development
+    default: true
+    workspace:
+      host: https://dbc-56f60291-144c.cloud.databricks.com
+    variables:
+      catalog: hive_metastore
+      schema: dev
+  prod:
+    mode: production
+    workspace:
+      host: https://dbc-56f60291-144c.cloud.databricks.com
+      # We explicitly deploy to /Workspace/Users/emanuel.vieira@sunnydata.ai to make sure we only have a single copy.
+      root_path: /Workspace/Users/emanuel.vieira@sunnydata.ai/.bundle/${bundle.name}/${bundle.target}
+    variables:
+      catalog: hive_metastore
+      schema: prod
+    permissions:
+      - user_name: emanuel.vieira@sunnydata.ai
+        level: CAN_MANAGE
