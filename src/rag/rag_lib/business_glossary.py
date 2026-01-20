@@ -221,4 +221,9 @@ BUSINESS_GLOSSARY_V2 = {
         "banca como servicio", "infraestructura bancaria", "servicios bancarios embebidos",
         "embedded finance", "banking infrastructure"
     ]},
+
+    "resultado": {"desc": "Siempre que se hable de resultado, se refiere al P&L.", "aliases": [
+        "resultado", "resultados", "p&l", "P&L"
+        # , "Resultado Comercial Nominal", "Resultado Operativo"
+    ]},
 }

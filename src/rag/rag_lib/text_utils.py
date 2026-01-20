@@ -4,6 +4,7 @@ import time
 from typing import Any, Dict, List, Optional, Tuple
 import os
 import unicodedata
+from rag_lib.config import SEGMENTS
 
 # -------------------------
 # # Helper functions (text cleaning + parsing)
@@ -88,4 +89,31 @@ def filter_hits_by_query_gates(query: str, hits: list[dict], gates: dict[str, li
         out.append(h)
 
     # opcional: no vaciar todo si el filtro fue demasiado agresivo
+    return out or hits
+
+#### Descarta hits que no contienen el query
+
+def drop_segment_topics_if_query_general(query: str, hits: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Si la query NO menciona segmentos (empresa/corporate/institucional/minorista/baas),
+    se descartan hits cuyo topic contenga alguno de esos segmentos.
+    """
+    if not hits:
+        return hits
+
+    qn = _norm_q(query)
+    query_mentions_segment = any(seg in qn for seg in SEGMENTS)
+
+    # Si la query ya menciona un segmento, no filtramos nada.
+    if query_mentions_segment:
+        return hits
+
+    out = []
+    for h in hits:
+        topic = _norm_q(h.get("topic") or "")
+        if any(seg in topic for seg in SEGMENTS):
+            continue
+        out.append(h)
+
+    # fallback por si fue demasiado agresivo
     return out or hits

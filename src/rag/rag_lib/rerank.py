@@ -105,6 +105,7 @@ def rerank_with_llm(query: str, hits: List[Dict[str, Any]], top_k: int = TOP_K_F
         f"- ranked_sids debe incluir como máximo {top_k} ids.\n"
         "- Prioriza coincidencia literal con palabras clave del query si existe.\n"
         "- En caso de empate de relevancia, prioriza file_date más reciente.\n"
+        # "- Si la pregunta no contiene 'Empresas', 'Corporate', 'Institucional', 'BaaS' o 'Minorista' entonces prioriza cualquier información que no contenga estos valores explicitamente.\n"
     )
 
     content = call_chat(

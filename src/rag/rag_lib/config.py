@@ -43,9 +43,15 @@ VS_COLUMNS = [
     "page_id","page_num","topic","chunk_text","chunk_type"
 ]
 
-# Para estos chunk_type, se EXIGE que la query contenga al menos 1 keyword.
+# # Para estos chunk_type, se EXIGE que la query contenga al menos 1 keyword.
 CHUNK_TYPE_QUERY_GATES = {
     "figure_enriched": ["evolución", "evolucion", "tendencia", "trend", "evolution", "variación", "variacion"],
-    # en el futuro podés sumar más tipos:
-    # "time_series_commentary": ["mensual", "yoy", "mom", "histórico", "historico"],
 }
+
+SEGMENTS = ["empresa", "corporate", "institucional", "minorista", "baas"]
+
+
+
+
+
+

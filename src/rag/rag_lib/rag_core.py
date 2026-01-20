@@ -28,7 +28,6 @@ print("VS index:", VS_INDEX_FULL_NAME)
 print("Embedding endpoint:", EMBED_ENDPOINT)
 print("LLM endpoint:", LLM_ENDPOINT)
 
-
 # -------------------------
 # CELL 5: RETRIEVER (Vector Search + expansion + lexical fallback)
 # - Guarantees lexical fallback is merged even if vector search fails
@@ -171,7 +170,8 @@ def extract_evidence(query: str, hits: List[Dict[str, Any]]) -> Dict[str, Any]:
         "- NO inventes información. Usa SOLO lo presente en el CONTEXTO.\n"
         "- Cada quote debe ser literal y de máximo 25 palabras.\n"
         "- key_points deben ser verificables por las citas (sids).\n"
-        "- Si la pregunta pide un segmento específico (ej: 'Empresas') y no aparece explícito, answerable=false.\n"
+        "- Si la pregunta no contiene 'Empresas', 'Corporate' o 'Institucional','Baas' o 'Minorista', y aparece explícito, answerable=false.\n"
+        "- Si la pregunta pide un segmento específico ('Empresas', 'Institucional', 'Corporate','Baas', 'Minorista')  y no aparece explícito, answerable=false.\n"
         "- Incluye máximo 12 key_points y máximo 12 evidence.\n"
     )
 
@@ -360,6 +360,10 @@ def answer_with_rag(query: str) -> Dict[str, Any]:
     candidates = retrieve_candidates(query, k=TOP_K_CANDIDATES) or [] 
     trace_stage("1) retrieve_candidates", query, candidates)
 
+    #Si no se menciona ningun segmento entonces descarta toda evidencia relacionada a cualquier segmentpo:
+    candidates = drop_segment_topics_if_query_general(query, candidates)
+    trace_stage("1.1) drop_segment_topics_if_query_general", query, candidates)
+
     # Soft ordering #1: anchors (gating suave por intención)
     # candidates_anchor_sorted = prefer_anchor_hits(query, hits_for_rerank)
     candidates_anchor_sorted = enforce_anchor_priority(query, candidates)
@@ -376,8 +380,9 @@ def answer_with_rag(query: str) -> Dict[str, Any]:
     trace_stage("4) tie_break_by_date_in_blocks(block_size=2)", query, hits_for_rerank_tiebroken)
 
     # Reranking en base a las reglas definidas:
-    top_hits = rerank_with_llm(query, hits_for_rerank_tiebroken, top_k=TOP_K_FINAL) or candidates[:TOP_K_FINAL] 
-    trace_stage(f"5) rerank_with_llm(top_k={TOP_K_FINAL})", query, top_hits)
+    top_hits = candidates[:TOP_K_FINAL] 
+    # top_hits = rerank_with_llm(query, hits_for_rerank_tiebroken, top_k=TOP_K_FINAL) or candidates[:TOP_K_FINAL] 
+    # trace_stage(f"5) rerank_with_llm(top_k={TOP_K_FINAL})", query, top_hits)
 
     # Se contruye la evidencia:
     evidence = extract_evidence(query, top_hits)
