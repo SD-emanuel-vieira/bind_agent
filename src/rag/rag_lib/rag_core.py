@@ -380,9 +380,8 @@ def answer_with_rag(query: str) -> Dict[str, Any]:
     trace_stage("4) tie_break_by_date_in_blocks(block_size=2)", query, hits_for_rerank_tiebroken)
 
     # Reranking en base a las reglas definidas:
-    top_hits = candidates[:TOP_K_FINAL] 
-    # top_hits = rerank_with_llm(query, hits_for_rerank_tiebroken, top_k=TOP_K_FINAL) or candidates[:TOP_K_FINAL] 
-    # trace_stage(f"5) rerank_with_llm(top_k={TOP_K_FINAL})", query, top_hits)
+    top_hits = rerank_with_llm(query, hits_for_rerank_tiebroken, top_k=TOP_K_FINAL) or candidates[:TOP_K_FINAL] 
+    trace_stage(f"5) rerank_with_llm(top_k={TOP_K_FINAL})", query, top_hits)
 
     # Se contruye la evidencia:
     evidence = extract_evidence(query, top_hits)
