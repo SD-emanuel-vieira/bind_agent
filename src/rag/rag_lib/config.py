@@ -39,8 +39,10 @@ RETRY_SLEEP_SECS = float(_get_env("RAG_RETRY_SLEEP_SECS"))
 
 # Columns we want back from Vector Search (both vector + FULL_TEXT fallback)
 VS_COLUMNS = [
-    "chunk_id","doc_id","path","file_date","file_type",
-    "page_id","page_num","topic","chunk_text","chunk_type"
+    "chunk_id","doc_id","path","file_date","file_type","page_id","page_num",
+    "topic_heuristic",
+    "topic_llm","topic_content",
+    "chunk_text","chunk_type"
 ]
 
 # # Para estos chunk_type, se EXIGE que la query contenga al menos 1 keyword.

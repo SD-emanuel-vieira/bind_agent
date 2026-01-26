@@ -77,10 +77,10 @@ BUSINESS_GLOSSARY_V2 = {
         "rentabilidad sobre el patrimonio", "rentabilidad sobre equity", "retorno sobre equity"
     ]},
 
-    "Com": {"desc": "Comisiones", "aliases": [
-        "comision", "comisión", "comisiones", "fees", "fee",
-        "cargos por comision", "cargos por comisión", "comis"
-    ]},
+    # "Com": {"desc": "Comisiones", "aliases": [
+    #     "comision", "comisión", "comisiones", "fees", "fee",
+    #     "cargos por comision", "cargos por comisión", "comis"
+    # ]},
 
     "ARS": {"desc": "Pesos Argentinos", "aliases": [
         "peso argentino", "pesos argentinos", "pesos", "ars",
@@ -222,7 +222,7 @@ BUSINESS_GLOSSARY_V2 = {
         "embedded finance", "banking infrastructure"
     ]},
 
-    "resultado financiero": {"desc": "Siempre que se hable de resultado financiero, se refiere al P&L.", "aliases": [
-        "resultado", "resultados", "p&l", "P&L"
-    ]},
+    # "resultado financiero": {"desc": "Siempre que se hable de resultado financiero, se refiere al P&L.", 
+    #     "aliases": ["resultado", "resultados", "p&l", "P&L"
+    # ]},
 }

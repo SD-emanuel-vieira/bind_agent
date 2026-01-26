@@ -110,7 +110,7 @@ def drop_segment_topics_if_query_general(query: str, hits: List[Dict[str, Any]])
 
     out = []
     for h in hits:
-        topic = _norm_q(h.get("topic") or "")
+        topic = _norm_q(h.get("topic_heuristic") or "")
         if any(seg in topic for seg in SEGMENTS):
             continue
         out.append(h)
