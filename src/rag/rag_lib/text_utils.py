@@ -48,17 +48,51 @@ def extract_chat_content(resp: Any) -> str:
     return str(resp)
 
 
+# def parse_vs_similarity_response(res: Any) -> List[Dict[str, Any]]:
+#     """Normalize Vector Search similarity_search response to list[dict]."""
+#     if isinstance(res, dict):
+#         r = res.get("result") or res
+#         cols = r.get("columns")
+#         data = r.get("data_array") or r.get("data") or []
+#         if cols and data:
+#             out = []
+#             for row in data:
+#                 out.append({c: row[i] for i, c in enumerate(cols)})
+#             return out
+#     if isinstance(res, list):
+#         return res
+#     return []
+
 def parse_vs_similarity_response(res: Any) -> List[Dict[str, Any]]:
     """Normalize Vector Search similarity_search response to list[dict]."""
     if isinstance(res, dict):
-        r = res.get("result") or res
-        cols = r.get("columns")
-        data = r.get("data_array") or r.get("data") or []
+        # Intentar obtener columns de diferentes ubicaciones
+        cols = None
+        data = None
+        
+        # Formato nuevo: manifest.columns + result.data_array
+        if "manifest" in res:
+            manifest_cols = res.get("manifest", {}).get("columns", [])
+            if manifest_cols:
+                # Extraer nombres de columnas si vienen como [{'name': 'col1'}, ...]
+                if isinstance(manifest_cols[0], dict):
+                    cols = [c.get("name") for c in manifest_cols]
+                else:
+                    cols = manifest_cols
+            data = res.get("result", {}).get("data_array", [])
+        
+        # Formato antiguo: result.columns + result.data_array
+        if not cols:
+            r = res.get("result") or res
+            cols = r.get("columns")
+            data = r.get("data_array") or r.get("data") or []
+        
         if cols and data:
             out = []
             for row in data:
-                out.append({c: row[i] for i, c in enumerate(cols)})
+                out.append({cols[i]: row[i] for i in range(min(len(cols), len(row)))})
             return out
+    
     if isinstance(res, list):
         return res
     return []
@@ -93,10 +127,37 @@ def filter_hits_by_query_gates(query: str, hits: list[dict], gates: dict[str, li
 
 #### Descarta hits que no contienen el query
 
+# def drop_segment_topics_if_query_general(query: str, hits: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+#     """
+#     Si la query NO menciona segmentos (empresa/corporate/institucional/minorista/baas),
+#     se descartan hits cuyo topic contenga alguno de esos segmentos.
+#     """
+#     if not hits:
+#         return hits
+
+#     qn = _norm_q(query)
+#     query_mentions_segment = any(seg in qn for seg in SEGMENTS)
+
+#     # Si la query ya menciona un segmento, no filtramos nada.
+#     if query_mentions_segment:
+#         return hits
+
+#     out = []
+#     for h in hits:
+#         topic = _norm_q(h.get("topic_heuristic") or "")
+#         if any(seg in topic for seg in SEGMENTS):
+#             continue
+#         out.append(h)
+
+#     # fallback por si fue demasiado agresivo
+#     return out or hits
+
+from typing import Any, Dict, List
+
 def drop_segment_topics_if_query_general(query: str, hits: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
     Si la query NO menciona segmentos (empresa/corporate/institucional/minorista/baas),
-    se descartan hits cuyo topic contenga alguno de esos segmentos.
+    se descartan hits cuyo topic (heuristic/llm/content) contenga alguno de esos segmentos.
     """
     if not hits:
         return hits
@@ -110,9 +171,17 @@ def drop_segment_topics_if_query_general(query: str, hits: List[Dict[str, Any]])
 
     out = []
     for h in hits:
-        topic = _norm_q(h.get("topic_heuristic") or "")
-        if any(seg in topic for seg in SEGMENTS):
+        # Unificamos los 3 campos a un solo texto para chequear segmentos
+        topic_parts = [
+            h.get("topic_heuristic") or "",
+            h.get("topic_llm") or "",
+            h.get("topic_content") or "",
+        ]
+        topic_combined = _norm_q(" ".join(topic_parts))
+
+        if any(seg in topic_combined for seg in SEGMENTS):
             continue
+
         out.append(h)
 
     # fallback por si fue demasiado agresivo

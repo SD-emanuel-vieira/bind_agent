@@ -16,6 +16,7 @@ from rag_lib.glossary_helper import glossary_snippet, glossary_expand_terms, pre
 from rag_lib.llm import call_chat, expand_query_for_retrieval
 from rag_lib.embeddings import embed_query
 from rag_lib.rerank import query_anchors,hit_anchor_score,tie_break_by_date_in_blocks,enforce_anchor_priority,rerank_with_llm
+# from rag_lib.trace import trace_stage
 
 # Clients
 vsc = VectorSearchClient()
@@ -89,7 +90,7 @@ def retrieve_candidates(query: str, k: int = TOP_K_CANDIDATES) -> List[Dict[str,
         q_fulltext = query  # ✅ aseguramos valor válido
 
     # 2) Always add lexical fallback (FULL_TEXT)
-    hits = lexical_fallback(q_fulltext, hits, limit=LEX_FALLBACK_LIMIT)
+    # hits = lexical_fallback(q_fulltext, hits, limit=LEX_FALLBACK_LIMIT)
 
     # 2.1) Exclude evidence that would be chart analysis
     hits = filter_hits_by_query_gates(query, hits, CHUNK_TYPE_QUERY_GATES)
@@ -344,13 +345,17 @@ def trace_stage(stage: str, query: str, hits: list[dict], top: int = 8):
         pg = h.get("page_num")
         ct = h.get("chunk_type") or ""
         gb = h.get("_glossary_bonus")
+        
+        # NUEVO: Mostrar el anchor_score calculado internamente
+        internal_anchor = h.get("_anchor_score", "?")
+        
         cid = _short_id(h.get("chunk_id"))
 
         path = h.get("path") or ""
         tail = path.split("/")[-1] if path else ""
 
-        print(f"  {i+1:02d}) a={a} | g={gb} | {fd} | p={pg} | {ct} | {tail} | cid={cid}")
-
+        # ACTUALIZADO: formato con anchor_score interno
+        print(f"  {i+1:02d}) a={a} | a_int={internal_anchor} | g={gb} | {fd} | p={pg} | {ct} | {tail} | cid={cid}")
 
 # -------------------------
 # CELL 10: Orchestrator (end-to-end RAG)

@@ -109,6 +109,24 @@ def lexical_fallback(query: str, hits: List[Dict[str, Any]], limit: int = LEX_FA
             num_results=limit,
             filters=None,
         )
+        print(f"Full-text search retornó: {len(rows)} resultados")
+    
+        print(f"Total resultados: {len(rows)}\n")
+
+        for i, r in enumerate(rows[:20], 1):
+            topic = r.get("topic_heuristic", "")
+            chunk = r.get("chunk_text", "")[:200]
+            
+            has_gasto_in_topic = "gasto" in topic.lower()
+            has_gasto_in_chunk = "gasto" in chunk.lower()
+            
+            print(f"--- Resultado {i} ---")
+            print(f"  topic_heuristic: {topic[:80]}")
+            print(f"  'gasto' en topic: {has_gasto_in_topic}")
+            print(f"  'gasto' en chunk_text: {has_gasto_in_chunk}")
+            print(f"  chunk_text (preview): {chunk[:100]}...")
+            print()
+
     except Exception as e:
         # If serving env doesn't have auth configured, do not break main flow.
         print("Lexical FULL_TEXT fallback failed. Error:", repr(e))
