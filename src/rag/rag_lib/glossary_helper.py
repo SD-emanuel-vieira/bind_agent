@@ -1,7 +1,7 @@
 import re
 import unicodedata
 from difflib import SequenceMatcher
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Set
 from rag_lib.business_glossary import BUSINESS_GLOSSARY_V2
 
 def _norm(s: str) -> str:
@@ -150,37 +150,176 @@ def glossary_bonus(hit: dict, terms: list[str]) -> int:
 
 
 # ============================================================
-# FIX: Calcular anchor score internamente para no depender del orden previo
+# NUEVO: Extracción de anchors que respeta frases del glosario
 # ============================================================
-_STOP = {"cual","cuál","cuales","cuáles","son","es","de","del","la","el","los","las",
-         "para","por","en","un","una","y","o","que","qué", "como", "cómo", "fue", "fueron"}
 
-_MONTHS = {"enero","febrero","marzo","abril","mayo","junio","julio","agosto",
-           "septiembre","octubre","noviembre","diciembre"}
+_STOP = {
+    "cual", "cuál", "cuales", "cuáles", "como", "cómo", 
+    "que", "qué", "quien", "quién", "donde", "dónde", "cuando", "cuándo",
+    "son", "es", "fue", "fueron", "ser", "estar", "sido", "siendo",
+    "de", "del", "la", "el", "los", "las", "un", "una", "unos", "unas",
+    "para", "por", "en", "con", "sin", "sobre", "entre", "hacia",
+    "y", "o", "ni", "pero", "sino", "aunque",
+    "se", "le", "lo", "les", "nos", "me", "te",
+    "este", "esta", "estos", "estas", "ese", "esa", "esos", "esas",
+    "mi", "tu", "su", "mis", "tus", "sus", "nuestro", "nuestra",
+    "al", "a", "ha", "han", "hay", "he", "has",
+    "muy", "mas", "más", "menos", "tan", "tanto", "mucho", "poco",
+    "si", "no", "ya", "aun", "todavia", "tambien", "solo", "sólo",
+}
 
-def _extract_query_anchors(query: str) -> list[str]:
-    """Extrae palabras clave importantes de la query (excluyendo stopwords y meses)."""
+_MONTHS = {
+    "enero", "febrero", "marzo", "abril", "mayo", "junio",
+    "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"
+}
+
+
+def _detect_glossary_phrases(query: str) -> Tuple[List[Tuple[str, str]], Set[str]]:
+    """
+    Detecta frases del glosario en la query.
+    
+    Returns:
+        - Lista de (frase_normalizada, acrónimo) encontrados
+        - Set de palabras "consumidas" por las frases
+    """
     qn = _norm(query)
-    toks = re.findall(r"[a-z]{4,}", qn)
-    out, seen = [], set()
-    for t in toks:
-        if t in _STOP: 
-            continue
-        if t in _MONTHS:
-            continue
-        if t in seen:
-            continue
-        seen.add(t)
-        out.append(t)
-    return out
+    
+    found_phrases = []
+    consumed_words: Set[str] = set()
+    
+    # Recopilar todas las frases (aliases con espacios)
+    all_aliases = []
+    for acronym, obj in BUSINESS_GLOSSARY_V2.items():
+        aliases = [acronym.lower()] + [a.lower() for a in obj.get("aliases", [])]
+        for alias in aliases:
+            alias_norm = _norm(alias)
+            if alias_norm and " " in alias_norm:
+                all_aliases.append((alias_norm, acronym.lower(), len(alias_norm)))
+    
+    # Ordenar por longitud descendente (frases más largas primero)
+    all_aliases.sort(key=lambda x: x[2], reverse=True)
+    
+    # Buscar frases en la query
+    for alias_norm, acronym, _ in all_aliases:
+        if alias_norm in qn:
+            alias_words = set(alias_norm.split())
+            if not alias_words.intersection(consumed_words):
+                found_phrases.append((alias_norm, acronym))
+                consumed_words.update(alias_words)
+    
+    return found_phrases, consumed_words
 
 
-def _compute_anchor_score(hit: dict, anchors: list[str]) -> int:
-    """Calcula cuántos anchors del query aparecen en el hit (texto + topic)."""
+def _detect_glossary_tokens(query: str, consumed: Set[str]) -> List[Tuple[str, str]]:
+    """
+    Detecta acrónimos/tokens del glosario en la query.
+    """
+    qn = _norm(query)
+    words = set(qn.split())
+    
+    found_tokens = []
+    
+    for acronym, obj in BUSINESS_GLOSSARY_V2.items():
+        acr_norm = _norm(acronym)
+        
+        if acr_norm in words and acr_norm not in consumed:
+            found_tokens.append((acr_norm, acronym.lower()))
+            continue
+        
+        for alias in obj.get("aliases", []):
+            alias_norm = _norm(alias)
+            if " " not in alias_norm and alias_norm in words and alias_norm not in consumed:
+                found_tokens.append((alias_norm, acronym.lower()))
+                break
+    
+    return found_tokens
+
+
+def _extract_query_anchors(query: str) -> List[str]:
+    """
+    Extrae anchors de la query, respetando frases del glosario.
+    
+    Proceso:
+    1. Detectar frases del glosario → usar frase completa + acrónimo
+    2. Detectar tokens/acrónimos del glosario → usar acrónimo
+    3. Extraer palabras restantes (no stopwords, no ya consumidas)
+    
+    Ejemplo:
+        Query: "Cual es el retorno sobre activos para octubre de 2025?"
+        Anchors: ['retorno sobre activos', 'roa', '2025']
+    """
+    qn = _norm(query)
+    
+    anchors = []
+    consumed_words: Set[str] = set()
+    
+    # 1) Detectar frases del glosario
+    phrases, phrase_words = _detect_glossary_phrases(query)
+    for phrase, acronym in phrases:
+        anchors.append(phrase)
+        anchors.append(acronym)
+        consumed_words.update(phrase.split())
+    
+    # 2) Detectar tokens/acrónimos del glosario
+    tokens = _detect_glossary_tokens(query, consumed_words)
+    for token, acronym in tokens:
+        if token not in consumed_words:
+            anchors.append(acronym)
+            consumed_words.add(token)
+    
+    # 3) Extraer palabras restantes
+    words = re.findall(r"[a-z0-9]+", qn)
+    
+    for w in words:
+        if w in consumed_words:
+            continue
+        if w in _STOP:
+            continue
+        if w in _MONTHS:
+            continue
+        if len(w) < 4:
+            if not (w.isdigit() and len(w) == 4):
+                continue
+        
+        anchors.append(w)
+        consumed_words.add(w)
+    
+    # Deduplicar preservando orden
+    seen: Set[str] = set()
+    unique = []
+    for a in anchors:
+        if a not in seen:
+            seen.add(a)
+            unique.append(a)
+    
+    return unique
+
+
+def _compute_anchor_score(hit: dict, anchors: List[str]) -> int:
+    """
+    Calcula el anchor score para un hit.
+    
+    - Frases del glosario: bonus mayor (3 puntos)
+    - Acrónimos/palabras: bonus estándar (1 punto)
+    """
     txt = _norm(hit.get("chunk_text_clean") or hit.get("chunk_text") or "")
     topic = _norm(hit.get("topic_heuristic") or "")
     combined = txt + " " + topic
-    return sum(1 for a in anchors if a in combined)
+    
+    score = 0
+    
+    for anchor in anchors:
+        if " " in anchor:
+            # Es una frase → bonus alto si matchea completa
+            if anchor in combined:
+                score += 3
+        else:
+            # Es una palabra/acrónimo → usar word boundary
+            pattern = rf"\b{re.escape(anchor)}\b"
+            if re.search(pattern, combined):
+                score += 1
+    
+    return score
 
 
 def prepare_rerank_candidates_glossary_aware(
@@ -190,28 +329,21 @@ def prepare_rerank_candidates_glossary_aware(
 ) -> List[Dict[str, Any]]:
     """
     Prepara candidatos para reranking, ordenando por:
-    1. Anchor score (palabras clave del query presentes en el chunk) - MÁS IMPORTANTE
-    2. Glossary bonus (términos del glosario)
+    1. Anchor score (frases/términos del glosario + keywords)
+    2. Glossary bonus
     3. Base score (similitud del vector search)
-    
-    FIX: Ahora calcula anchor_score internamente para no depender del paso anterior.
     """
     if not hits:
         return []
     
-    # ============================================================
-    # NUEVO: Calcular anchor score para cada hit
-    # ============================================================
+    # Extraer anchors (ahora respeta frases del glosario)
     anchors = _extract_query_anchors(query)
     
     for h in hits:
-        # Calcular anchor score (cuántas keywords del query tiene el chunk)
         anchor_score = _compute_anchor_score(h, anchors) if anchors else 0
         h["_anchor_score"] = anchor_score
 
-    # ============================================================
-    # Glossary expansion (como antes)
-    # ============================================================
+    # Glossary expansion
     gl = glossary_expand_terms(query)
     terms = gl.get("terms", []) or []
 
@@ -222,18 +354,17 @@ def prepare_rerank_candidates_glossary_aware(
             h["_glossary_phrase_hits"] = 0
             h["_glossary_token_hits"] = 0
         
-        # Ordenar: primero por anchor_score (desc), luego por base_score (desc)
         ranked = sorted(
             hits,
             key=lambda h: (
-                h.get("_anchor_score", 0),  # Prioridad 1: anchor score
-                float(h.get("score") or h.get("similarity") or 0.0)  # Prioridad 2: vector score
+                h.get("_anchor_score", 0),
+                float(h.get("score") or h.get("similarity") or 0.0)
             ),
             reverse=True
         )
         return ranked[:max_input]
 
-    # --- 1) separar anchors: frases vs tokens (acrónimos)
+    # Separar frases vs tokens
     phrases = []
     tokens = []
 
@@ -244,12 +375,10 @@ def prepare_rerank_candidates_glossary_aware(
         if " " in t:
             phrases.append(t)
         else:
-            # solo tokens "fuertes": acrónimos cortos o con %/puntos
             tl = t.lower()
             if len(tl) <= 5 or "%" in t or "." in t:
                 tokens.append(t)
 
-    # dedupe por normalización
     def _dedupe(xs):
         out, seen = [], set()
         for x in xs:
@@ -261,9 +390,8 @@ def prepare_rerank_candidates_glossary_aware(
         return out
 
     phrases = _dedupe(phrases)
-    tokens  = _dedupe(tokens)
+    tokens = _dedupe(tokens)
 
-    # Si no hay anchors fuertes del glosario, ordenar solo por anchor_score + base_score
     if not phrases and not tokens:
         for h in hits:
             h["_glossary_bonus"] = 0
@@ -278,7 +406,7 @@ def prepare_rerank_candidates_glossary_aware(
         )
         return ranked[:max_input]
 
-    # --- 2) compilar regex estrictos
+    # Compilar patterns
     def _phrase_pattern(p: str) -> re.Pattern:
         pn = _norm(p)
         parts = [re.escape(w) for w in pn.split() if w]
@@ -297,7 +425,6 @@ def prepare_rerank_candidates_glossary_aware(
         token_pats.append(re.compile(rf"\b{re.escape(tn)}\b", flags=re.IGNORECASE))
         token_pats.append(re.compile(rf"\b{re.escape(tn)}\s*%", flags=re.IGNORECASE))
 
-    # --- 3) scoring
     def anchor_matches(h: Dict[str, Any]) -> tuple[int, int]:
         txt = h.get("chunk_text_clean") or h.get("chunk_text") or ""
         topic = h.get("topic_heuristic") or ""
@@ -305,7 +432,7 @@ def prepare_rerank_candidates_glossary_aware(
         tn = _norm(combined)
 
         phrase_hits = sum(1 for pat in phrase_pats if pat.search(tn))
-        token_hits  = sum(1 for pat in token_pats  if pat.search(tn))
+        token_hits = sum(1 for pat in token_pats if pat.search(tn))
         return phrase_hits, token_hits
 
     def base_score(h: Dict[str, Any]) -> float:
@@ -315,24 +442,17 @@ def prepare_rerank_candidates_glossary_aware(
         ph, tk = anchor_matches(h)
         h["_glossary_phrase_hits"] = ph
         h["_glossary_token_hits"] = tk
-
-        # frases mandan; tokens ayudan pero no ganan solos
-        glossary_bonus = ph * 50 + tk * 5
-
-        # penalización si no hay frases NI tokens del glosario
+        glossary_bonus_val = ph * 50 + tk * 5
         penalty = 30 if (ph == 0 and tk == 0) else 0
+        h["_glossary_bonus"] = glossary_bonus_val - penalty
 
-        h["_glossary_bonus"] = glossary_bonus - penalty
-
-    # ============================================================
-    # FIX: Ordenar por ANCHOR_SCORE primero, luego glossary_bonus, luego base_score
-    # ============================================================
+    # Ordenar: anchor_score > glossary_bonus > base_score
     ranked = sorted(
         hits,
         key=lambda h: (
-            h.get("_anchor_score", 0) * 100,  # Prioridad 1: anchor score (peso alto)
-            h.get("_glossary_bonus", 0),       # Prioridad 2: glossary bonus
-            base_score(h)                       # Prioridad 3: vector score
+            h.get("_anchor_score", 0) * 100,
+            h.get("_glossary_bonus", 0),
+            base_score(h)
         ),
         reverse=True
     )

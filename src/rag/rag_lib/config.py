@@ -56,4 +56,3 @@ SEGMENTS = ["empresa", "corporate", "institucional", "minorista", "baas", "segme
 
 
 
-

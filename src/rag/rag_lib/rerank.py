@@ -1,11 +1,12 @@
 import re
 import unicodedata
 from difflib import SequenceMatcher
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Set
 from rag_lib.config import *
 from rag_lib.text_utils import safe_json_load
 from rag_lib.text_utils import shorten
 from rag_lib.llm import call_chat
+from rag_lib.business_glossary import BUSINESS_GLOSSARY_V2
 
 def tie_break_by_date_in_blocks(hits, block_size=2):
     out = []
@@ -16,36 +17,122 @@ def tie_break_by_date_in_blocks(hits, block_size=2):
     return out
 
 # ---- Funciones que permiten excluir chunks sin anchor
-_STOP = {"cual","cuál","cuales","cuáles","son","es","de","del","la","el","los","las",
-         "para","por","en","un","una","y","o","que","qué"}
-
-_MONTHS = {"enero","febrero","marzo","abril","mayo","junio","julio","agosto",
-           "septiembre","octubre","noviembre","diciembre"}
-
-def _norm_simple(s: str) -> str:
-    s = (s or "").lower()
+def _norm(s: str) -> str:
+    s = (s or "").strip().lower()
     s = "".join(ch for ch in unicodedata.normalize("NFKD", s) if not unicodedata.combining(ch))
-    s = re.sub(r"\s+", " ", s).strip()
+    s = re.sub(r"\s+", " ", s)
     return s
 
-def query_anchors(query: str) -> list[str]:
-    qn = _norm_simple(query)
-    toks = re.findall(r"[a-z]{4,}", qn)
-    out, seen = [], set()
-    for t in toks:
-        if t in _STOP: 
-            continue
-        if t in _MONTHS:
-            continue
-        if t in seen:
-            continue
-        seen.add(t)
-        out.append(t)
-    return out
 
-def hit_anchor_score(hit: dict, anchors: list[str]) -> int:
-    txt = _norm_simple(hit.get("chunk_text_clean") or hit.get("chunk_text") or "")
-    return sum(1 for a in anchors if a in txt)
+_STOP = {
+    "cual", "cuál", "cuales", "cuáles", "como", "cómo", 
+    "que", "qué", "quien", "quién", "donde", "dónde", "cuando", "cuándo",
+    "son", "es", "fue", "fueron", "ser", "estar", "sido", "siendo",
+    "de", "del", "la", "el", "los", "las", "un", "una", "unos", "unas",
+    "para", "por", "en", "con", "sin", "sobre", "entre", "hacia",
+    "y", "o", "ni", "pero", "sino", "aunque",
+    "se", "le", "lo", "les", "nos", "me", "te",
+    "este", "esta", "estos", "estas", "ese", "esa", "esos", "esas",
+    "mi", "tu", "su", "mis", "tus", "sus", "nuestro", "nuestra",
+    "al", "a", "ha", "han", "hay", "he", "has",
+    "muy", "mas", "más", "menos", "tan", "tanto", "mucho", "poco",
+    "si", "no", "ya", "aun", "todavia", "tambien", "solo", "sólo",
+}
+
+_MONTHS = {
+    "enero", "febrero", "marzo", "abril", "mayo", "junio",
+    "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"
+}
+
+
+def _detect_glossary_phrases_for_anchors(query: str) -> Tuple[List[Tuple[str, str]], Set[str]]:
+    qn = _norm(query)
+    found_phrases = []
+    consumed_words: Set[str] = set()
+    
+    all_aliases = []
+    for acronym, obj in BUSINESS_GLOSSARY_V2.items():
+        aliases = [acronym.lower()] + [a.lower() for a in obj.get("aliases", [])]
+        for alias in aliases:
+            alias_norm = _norm(alias)
+            if alias_norm and " " in alias_norm:
+                all_aliases.append((alias_norm, acronym.lower(), len(alias_norm)))
+    
+    all_aliases.sort(key=lambda x: x[2], reverse=True)
+    
+    for alias_norm, acronym, _ in all_aliases:
+        if alias_norm in qn:
+            alias_words = set(alias_norm.split())
+            if not alias_words.intersection(consumed_words):
+                found_phrases.append((alias_norm, acronym))
+                consumed_words.update(alias_words)
+    
+    return found_phrases, consumed_words
+
+def query_anchors(query: str) -> List[str]:
+    """
+    Versión mejorada que respeta frases del glosario.
+    Compatible con el trace_stage existente.
+    """
+    qn = _norm(query)
+    
+    anchors = []
+    consumed_words: Set[str] = set()
+    
+    # 1) Detectar frases del glosario
+    phrases, phrase_words = _detect_glossary_phrases_for_anchors(query)
+    for phrase, acronym in phrases:
+        anchors.append(phrase)
+        anchors.append(acronym)
+        consumed_words.update(phrase.split())
+    
+    # 2) Detectar tokens del glosario
+    words_in_query = set(qn.split())
+    for acronym, obj in BUSINESS_GLOSSARY_V2.items():
+        acr_norm = _norm(acronym)
+        if acr_norm in words_in_query and acr_norm not in consumed_words:
+            anchors.append(acr_norm)
+            consumed_words.add(acr_norm)
+    
+    # 3) Palabras restantes
+    words = re.findall(r"[a-z0-9]+", qn)
+    for w in words:
+        if w in consumed_words or w in _STOP or w in _MONTHS:
+            continue
+        if len(w) < 4 and not (w.isdigit() and len(w) == 4):
+            continue
+        anchors.append(w)
+        consumed_words.add(w)
+    
+    # Deduplicar
+    seen: Set[str] = set()
+    unique = []
+    for a in anchors:
+        if a not in seen:
+            seen.add(a)
+            unique.append(a)
+    
+    return unique
+
+def hit_anchor_score(hit: Dict[str, Any], anchors: List[str]) -> int:
+    """
+    Versión mejorada con scoring diferenciado para frases vs palabras.
+    """
+    txt = _norm(hit.get("chunk_text_clean") or hit.get("chunk_text") or "")
+    topic = _norm(hit.get("topic_heuristic") or "")
+    combined = txt + " " + topic
+    
+    score = 0
+    for anchor in anchors:
+        if " " in anchor:
+            if anchor in combined:
+                score += 3
+        else:
+            pattern = rf"\b{re.escape(anchor)}\b"
+            if re.search(pattern, combined):
+                score += 1
+    
+    return score
 
 # -------- Se refuerza aquellos chunks que tiene un anchor score más alto
 def enforce_anchor_priority(query: str, hits: list[dict]) -> list[dict]:
