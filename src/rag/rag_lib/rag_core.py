@@ -10,7 +10,7 @@ from databricks.vector_search.client import VectorSearchClient
 from rag_lib.secret_functions import *
 from rag_lib.config import *
 from rag_lib.text_utils import *
-from rag_lib.lexical_fallback import _get_dbx_auth, _vs_full_text_query, lexical_fallback
+from rag_lib.retriever import _get_dbx_auth, _vs_full_text_query, lexical_fallback
 from rag_lib.business_glossary import BUSINESS_GLOSSARY_V2
 from rag_lib.glossary_helper import glossary_snippet, glossary_expand_terms, prepare_rerank_candidates_glossary_aware
 from rag_lib.llm import call_chat, expand_query_for_retrieval
@@ -90,7 +90,7 @@ def retrieve_candidates(query: str, k: int = TOP_K_CANDIDATES) -> List[Dict[str,
         q_fulltext = query  # ✅ aseguramos valor válido
 
     # 2) Always add lexical fallback (FULL_TEXT)
-    # hits = lexical_fallback(q_fulltext, hits, limit=LEX_FALLBACK_LIMIT)
+    hits = lexical_fallback(q_fulltext, hits, limit=LEX_FALLBACK_LIMIT)
 
     # 2.1) Exclude evidence that would be chart analysis
     hits = filter_hits_by_query_gates(query, hits, CHUNK_TYPE_QUERY_GATES)

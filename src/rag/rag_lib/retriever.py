@@ -113,19 +113,19 @@ def lexical_fallback(query: str, hits: List[Dict[str, Any]], limit: int = LEX_FA
     
         print(f"Total resultados: {len(rows)}\n")
 
-        for i, r in enumerate(rows[:20], 1):
-            topic = r.get("topic_heuristic", "")
-            chunk = r.get("chunk_text", "")[:200]
+        # for i, r in enumerate(rows[:LEX_FALLBACK_LIMIT], 1):
+        #     topic = r.get("topic_heuristic", "")
+        #     chunk = r.get("chunk_text", "")[:200]
             
-            has_gasto_in_topic = "gasto" in topic.lower()
-            has_gasto_in_chunk = "gasto" in chunk.lower()
+        #     has_gasto_in_topic = "gasto" in topic.lower()
+        #     has_gasto_in_chunk = "gasto" in chunk.lower()
             
-            print(f"--- Resultado {i} ---")
-            print(f"  topic_heuristic: {topic[:80]}")
-            print(f"  'gasto' en topic: {has_gasto_in_topic}")
-            print(f"  'gasto' en chunk_text: {has_gasto_in_chunk}")
-            print(f"  chunk_text (preview): {chunk[:100]}...")
-            print()
+        #     print(f"--- Resultado {i} ---")
+        #     print(f"  topic_heuristic: {topic[:80]}")
+        #     print(f"  'gasto' en topic: {has_gasto_in_topic}")
+        #     print(f"  'gasto' en chunk_text: {has_gasto_in_chunk}")
+        #     print(f"  chunk_text (preview): {chunk[:100]}...")
+        #     print()
 
     except Exception as e:
         # If serving env doesn't have auth configured, do not break main flow.
@@ -152,3 +152,80 @@ def lexical_fallback(query: str, hits: List[Dict[str, Any]], limit: int = LEX_FA
     # print(f"lexical_fallback: {len(merged)} hits")
 
     return merged
+
+# # -------------------------
+# # CELL 5: RETRIEVER (Vector Search + expansion + lexical fallback)
+# # - Guarantees lexical fallback is merged even if vector search fails
+# # -------------------------
+# def retrieve_candidates(query: str, k: int = TOP_K_CANDIDATES) -> List[Dict[str, Any]]:
+#     hits: List[Dict[str, Any]] = []
+
+#     # ✅ default (por si falla el try)
+#     q_fulltext = query
+
+#     # 1) Try vector search (best effort)
+#     try:
+#         gl = glossary_expand_terms(query)
+#         terms = gl.get("terms", []) or []
+#         acronyms = gl.get("acronyms", []) or []
+
+#         q_llm = expand_query_for_retrieval(query) or query
+
+#         # Query para embeddings/vector: más rica (mejor semántica)
+#         q_embed = q_llm
+#         if terms:
+#             q_embed = q_embed + "\n\nGLOSSARY TERMS: " + " | ".join(terms)
+
+#         # Helper de quoting para FULL_TEXT
+#         def _qt(t: str) -> str:
+#             t = (t or "").strip()
+#             return f'"{t}"' if " " in t else t
+
+#         # ✅ FULL_TEXT "glossary-focused" si hay acrónimos relevantes (evita dilución)
+#         # (Ignoramos acrónimos de 1 letra tipo R/E)
+#         focus_acronyms = [a.strip() for a in acronyms if isinstance(a, str) and len(a.strip()) >= 2]
+
+#         if focus_acronyms:
+#             # FULL_TEXT más "afilado": buscar directo por ROA/ROE/etc
+#             q_fulltext = " ".join(_qt(a) for a in focus_acronyms)
+#         else:
+#             # FULL_TEXT estándar: query + términos (como estaba antes)
+#             q_fulltext = query
+#             if terms:
+#                 q_fulltext = q_fulltext + " " + " ".join(_qt(t) for t in terms)
+
+#         qvec = embed_query(q_embed)
+
+#         if qvec:
+#             res = index.similarity_search(
+#                 query_vector=qvec,  # direct access index requires query_vector
+#                 columns=VS_COLUMNS,
+#                 num_results=k
+#             )
+#             hits = parse_vs_similarity_response(res)
+
+#             for h in hits:
+#                 raw = (h.get("chunk_text") or "").strip()
+#                 h["chunk_text_clean"] = strip_chunk_prefix(raw)
+
+#     except Exception as e:
+#         print("Vector retrieval failed, fallback lexical only. Error:", repr(e))
+#         hits = []
+#         q_fulltext = query  # ✅ aseguramos valor válido
+
+#     # # 2) Always add lexical fallback (FULL_TEXT)
+#     # hits = lexical_fallback(q_fulltext, hits, limit=LEX_FALLBACK_LIMIT)
+
+#     # 2.1) Exclude evidence that would be chart analysis
+#     hits = filter_hits_by_query_gates(query, hits, CHUNK_TYPE_QUERY_GATES)
+
+#     # 3) Merge + dedupe by chunk_id
+#     merged = []
+#     seen = set()
+#     for h in hits:
+#         cid = h.get("chunk_id")
+#         if cid and cid not in seen:
+#             merged.append(h)
+#             seen.add(cid)
+
+#     return merged

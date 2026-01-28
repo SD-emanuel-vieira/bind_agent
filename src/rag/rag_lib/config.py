@@ -50,7 +50,7 @@ CHUNK_TYPE_QUERY_GATES = {
     "figure_enriched": ["evolución", "evolucion", "tendencia", "trend", "evolution", "variación", "variacion"],
 }
 
-SEGMENTS = ["empresa", "corporate", "institucional", "minorista", "baas"]
+SEGMENTS = ["empresa", "corporate", "institucional", "minorista", "baas", "segmento"]
 
 
 
