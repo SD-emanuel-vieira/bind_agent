@@ -50,9 +50,24 @@ CHUNK_TYPE_QUERY_GATES = {
     "figure_enriched": ["evolución", "evolucion", "tendencia", "trend", "evolution", "variación", "variacion"],
 }
 
-SEGMENTS = ["empresa", "corporate", "institucional", "minorista", "baas", "segmento"]
+# Segmentos conocidos
+SEGMENTS = {"empresas", "corporate", "institucional", "minorista", "baas", "pyme", "pymes"}
 
-
-
+# Mapeo de aliases a segmento canónico
+SEGMENT_ALIASES = {
+    "empresas": "empresas",
+    "empresa": "empresas",
+    "corporate": "corporate",
+    "corp": "corporate",
+    "institucional": "institucional",
+    "institucionales": "institucional",
+    "minorista": "minorista",
+    "retail": "minorista",
+    "individuos": "minorista",
+    "baas": "baas",
+    "banca as a service": "baas",
+    "pyme": "pyme",
+    "pymes": "pyme",
+}
 
 

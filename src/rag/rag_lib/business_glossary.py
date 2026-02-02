@@ -109,6 +109,7 @@ BUSINESS_GLOSSARY_V2 = {
 
     "Xsell": {"desc": "Cross Sell", "aliases": [
         "cross sell", "cross-sell", "cross selling", "cross-selling",
+        "Xsell Vinculadas", "Xsell vinculada", "cross sell Vinculada",
         "venta cruzada", "ventas cruzadas", "cruce de productos", "cruce de ventas"
     ]},
 
