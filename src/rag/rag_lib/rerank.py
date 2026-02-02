@@ -1,3 +1,12 @@
+"""
+rerank.py - Módulo de reranking para RAG
+
+ACTUALIZADO:
+- El reranker LLM ahora recibe información del anchor_score
+- Los chunks con alto anchor_score están "protegidos" y no pueden bajar demasiado
+- Mejor balance entre relevancia semántica (LLM) y match exacto (anchors)
+"""
+
 import re
 import unicodedata
 from difflib import SequenceMatcher
@@ -8,6 +17,7 @@ from rag_lib.text_utils import shorten
 from rag_lib.llm import call_chat
 from rag_lib.business_glossary import BUSINESS_GLOSSARY_V2
 
+
 def tie_break_by_date_in_blocks(hits, block_size=2):
     out = []
     for i in range(0, len(hits), block_size):
@@ -16,7 +26,8 @@ def tie_break_by_date_in_blocks(hits, block_size=2):
         out.extend(block)
     return out
 
-# ---- Funciones que permiten excluir chunks sin anchor
+
+# ---- Funciones de normalización y anchors ----
 def _norm(s: str) -> str:
     s = (s or "").strip().lower()
     s = "".join(ch for ch in unicodedata.normalize("NFKD", s) if not unicodedata.combining(ch))
@@ -69,10 +80,10 @@ def _detect_glossary_phrases_for_anchors(query: str) -> Tuple[List[Tuple[str, st
     
     return found_phrases, consumed_words
 
+
 def query_anchors(query: str) -> List[str]:
     """
     Versión mejorada que respeta frases del glosario.
-    Compatible con el trace_stage existente.
     """
     qn = _norm(query)
     
@@ -114,6 +125,7 @@ def query_anchors(query: str) -> List[str]:
     
     return unique
 
+
 def hit_anchor_score(hit: Dict[str, Any], anchors: List[str]) -> int:
     """
     Versión mejorada con scoring diferenciado para frases vs palabras.
@@ -134,13 +146,13 @@ def hit_anchor_score(hit: Dict[str, Any], anchors: List[str]) -> int:
     
     return score
 
-# -------- Se refuerza aquellos chunks que tiene un anchor score más alto
+
 def enforce_anchor_priority(query: str, hits: list[dict]) -> list[dict]:
+    """Refuerza chunks que tienen anchor score más alto."""
     anchors = query_anchors(query)
     if not anchors or not hits:
         return hits
 
-    # calcula score
     max_s = 0
     for h in hits:
         s = hit_anchor_score(h, anchors)
@@ -148,33 +160,65 @@ def enforce_anchor_priority(query: str, hits: list[dict]) -> list[dict]:
         if s > max_s:
             max_s = s
 
-    # si nadie matchea anchors, no tocamos nada
     if max_s == 0:
         return hits
 
-    # stable: conserva el orden relativo que el LLM ya decidió dentro de cada grupo
     pos = [h for h in hits if h["_q_anchor_score"] > 0]
     neg = [h for h in hits if h["_q_anchor_score"] == 0]
     return pos + neg
-# -------------------------
-# CELL 6: Reranking with LLM
-# -------------------------
+
+
+# ============================================================
+# RERANKING CON LLM - VERSIÓN MEJORADA
+# ============================================================
+
 def rerank_with_llm(query: str, hits: List[Dict[str, Any]], top_k: int = TOP_K_FINAL) -> List[Dict[str, Any]]:
+    """
+    Reranking con LLM que RESPETA el anchor score.
+    
+    Estrategia:
+    1. Calcular anchor_score para cada hit
+    2. Identificar hits "protegidos" (anchor_score >= umbral)
+    3. Enviar al LLM para reranking semántico
+    4. Post-procesar: asegurar que hits protegidos estén en top posiciones
+    """
     if not hits:
         return []
-
+    
+    # Calcular anchor scores
+    anchors = query_anchors(query)
+    for h in hits:
+        if "_anchor_score" not in h:
+            h["_anchor_score"] = hit_anchor_score(h, anchors) if anchors else 0
+    
+    # Encontrar el máximo anchor score
+    max_anchor = max((h.get("_anchor_score", 0) for h in hits), default=0)
+    
+    # Umbral para "protección": chunks con score >= 80% del máximo están protegidos
+    protection_threshold = max(1, int(max_anchor * 0.8)) if max_anchor > 0 else 0
+    
+    # Identificar hits protegidos (alto anchor score)
+    protected_hits = [h for h in hits if h.get("_anchor_score", 0) >= protection_threshold and protection_threshold > 0]
+    protected_ids = {h.get("chunk_id") for h in protected_hits}
+    
+    # Preparar items para el LLM
     items = []
     for idx, h in enumerate(hits, start=1):
         sid = f"S{idx}"
         snippet = shorten(h.get("chunk_text_clean", ""), RERANK_SNIPPET_CHARS)
+        anchor_score = h.get("_anchor_score", 0)
+        
+        # Incluir anchor_score en metadata para que el LLM lo considere
         meta = (
             f'file_date={h.get("file_date")}, '
-            f'path="{h.get("path")}", page_num={h.get("page_num")}, topic="{h.get("topic")}"'
+            f'path="{h.get("path")}", page_num={h.get("page_num")}, '
+            f'topic="{h.get("topic_heuristic") or h.get("topic")}", '
+            f'keyword_match_score={anchor_score}'  # NUEVO: informar al LLM
         )
         items.append({"sid": sid, "meta": meta, "snippet": snippet, "hit": h})
 
     system = (
-        "Eres un motor de reranking para recuperación de información.\n"
+        "Eres un motor de reranking para recuperación de información corporativa.\n"
         "Ordena extractos por relevancia para responder la pregunta.\n"
         "Devuelve SOLO JSON válido, sin texto adicional."
     )
@@ -190,9 +234,10 @@ def rerank_with_llm(query: str, hits: List[Dict[str, Any]], top_k: int = TOP_K_F
         '  "reasons": {"S3":"...", "S1":"..."}\n'
         "}\n"
         f"- ranked_sids debe incluir como máximo {top_k} ids.\n"
-        "- Prioriza coincidencia literal con palabras clave del query si existe.\n"
+        "- IMPORTANTE: keyword_match_score indica coincidencia con términos del query.\n"
+        "  Chunks con keyword_match_score ALTO deben priorizarse fuertemente.\n"
+        "- Prioriza coincidencia literal con palabras clave del query.\n"
         "- En caso de empate de relevancia, prioriza file_date más reciente.\n"
-        # "- Si la pregunta no contiene 'Empresas', 'Corporate', 'Institucional', 'BaaS' o 'Minorista' entonces prioriza cualquier información que no contenga estos valores explicitamente.\n"
     )
 
     content = call_chat(
@@ -203,15 +248,70 @@ def rerank_with_llm(query: str, hits: List[Dict[str, Any]], top_k: int = TOP_K_F
     )
 
     parsed = safe_json_load(content)
-    ranked = parsed.get("ranked_sids", [])
+    ranked_sids = parsed.get("ranked_sids", [])
 
-    if not ranked or not isinstance(ranked, list):
+    if not ranked_sids or not isinstance(ranked_sids, list):
         return hits[:top_k]
 
     sid_to_hit = {f"S{i+1}": items[i]["hit"] for i in range(len(items))}
-    reranked = [sid_to_hit[sid] for sid in ranked if sid in sid_to_hit]
+    llm_reranked = [sid_to_hit[sid] for sid in ranked_sids if sid in sid_to_hit]
 
-    # fill up if needed
+    # ============================================================
+    # POST-PROCESAMIENTO: Proteger chunks con alto anchor score
+    # ============================================================
+    if protected_hits:
+        # Encontrar hits protegidos que el LLM relegó a posiciones bajas
+        protected_in_result = []
+        other_in_result = []
+        
+        for h in llm_reranked:
+            if h.get("chunk_id") in protected_ids:
+                protected_in_result.append(h)
+            else:
+                other_in_result.append(h)
+        
+        # Encontrar hits protegidos que el LLM excluyó completamente
+        result_ids = {h.get("chunk_id") for h in llm_reranked}
+        protected_excluded = [h for h in protected_hits if h.get("chunk_id") not in result_ids]
+        
+        # Combinar: protegidos primero, luego el resto del ranking del LLM
+        # Ordenar protegidos por anchor_score descendente
+        all_protected = protected_in_result + protected_excluded
+        all_protected.sort(key=lambda h: h.get("_anchor_score", 0), reverse=True)
+        
+        # Cuántos protegidos garantizar en el top
+        # Regla: al menos la mitad de top_k, máximo todos los protegidos
+        min_protected_slots = min(len(all_protected), max(2, top_k // 2))
+        
+        # Construir resultado final
+        final_result = []
+        protected_added = set()
+        
+        # Agregar los top protegidos primero
+        for h in all_protected[:min_protected_slots]:
+            final_result.append(h)
+            protected_added.add(h.get("chunk_id"))
+        
+        # Agregar el resto del ranking del LLM (excluyendo los ya agregados)
+        for h in llm_reranked:
+            if h.get("chunk_id") not in protected_added:
+                final_result.append(h)
+                if len(final_result) >= top_k:
+                    break
+        
+        # Si aún faltan, agregar protegidos restantes
+        if len(final_result) < top_k:
+            for h in all_protected:
+                if h.get("chunk_id") not in protected_added:
+                    final_result.append(h)
+                    if len(final_result) >= top_k:
+                        break
+        
+        reranked = final_result
+    else:
+        reranked = llm_reranked
+
+    # Fill up si es necesario
     if len(reranked) < top_k:
         seen = set(h.get("chunk_id") for h in reranked)
         for h in hits:
@@ -220,22 +320,26 @@ def rerank_with_llm(query: str, hits: List[Dict[str, Any]], top_k: int = TOP_K_F
                 if len(reranked) >= top_k:
                     break
 
-
     return reranked[:top_k]
 
-### -------------- DEBUGGING
 
-import os, re, unicodedata
+# ============================================================
+# DEBUGGING
+# ============================================================
+
+import os
 from collections import Counter
 
 DEBUG_TRACE = os.getenv("RAG_DEBUG_TRACE", "0") == "1"
+
 
 def _short_id(cid: str, n: int = 10) -> str:
     cid = cid or ""
     return cid[:n]
 
-def trace_stage(stage: str, query: str, hits: list[dict], top: int = 8):
-    """Tracer resumido para debuggear orden sin spamear output."""
+
+def trace_stage(stage: str, query: str, hits: list[dict], top: int = 12):
+    """Tracer resumido para debuggear orden."""
     if not DEBUG_TRACE:
         return
     if hits is None:
@@ -244,7 +348,6 @@ def trace_stage(stage: str, query: str, hits: list[dict], top: int = 8):
     anchors = query_anchors(query)
     total = len(hits)
 
-    # stats rápidos
     anchor_scores = [hit_anchor_score(h, anchors) for h in hits] if anchors else [0] * total
     n_anchor_pos = sum(1 for s in anchor_scores if s > 0)
 
@@ -254,7 +357,6 @@ def trace_stage(stage: str, query: str, hits: list[dict], top: int = 8):
     print("\n" + "-" * 110)
     print(f"[TRACE] {stage} | total={total} | anchors={anchors} | anchor_hits>0={n_anchor_pos} | chunk_type={top_ctypes}")
 
-    # ✅ si querés imprimir TODOS, setear env var RAG_DEBUG_TRACE_ALL=1
     trace_all = os.getenv("RAG_DEBUG_TRACE_ALL", "0") == "1"
     limit = total if trace_all else min(top, total)
 
@@ -265,14 +367,10 @@ def trace_stage(stage: str, query: str, hits: list[dict], top: int = 8):
         pg = h.get("page_num")
         ct = h.get("chunk_type") or ""
         gb = h.get("_glossary_bonus")
-        
-        # NUEVO: Mostrar el anchor_score calculado internamente
         internal_anchor = h.get("_anchor_score", "?")
-        
         cid = _short_id(h.get("chunk_id"))
 
         path = h.get("path") or ""
         tail = path.split("/")[-1] if path else ""
 
-        # ACTUALIZADO: formato con anchor_score interno
         print(f"  {i+1:02d}) a={a} | a_int={internal_anchor} | g={gb} | {fd} | p={pg} | {ct} | {tail} | cid={cid}")

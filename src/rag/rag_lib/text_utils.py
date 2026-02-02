@@ -47,22 +47,6 @@ def extract_chat_content(resp: Any) -> str:
                 return p0
     return str(resp)
 
-
-# def parse_vs_similarity_response(res: Any) -> List[Dict[str, Any]]:
-#     """Normalize Vector Search similarity_search response to list[dict]."""
-#     if isinstance(res, dict):
-#         r = res.get("result") or res
-#         cols = r.get("columns")
-#         data = r.get("data_array") or r.get("data") or []
-#         if cols and data:
-#             out = []
-#             for row in data:
-#                 out.append({c: row[i] for i, c in enumerate(cols)})
-#             return out
-#     if isinstance(res, list):
-#         return res
-#     return []
-
 def parse_vs_similarity_response(res: Any) -> List[Dict[str, Any]]:
     """Normalize Vector Search similarity_search response to list[dict]."""
     if isinstance(res, dict):
@@ -147,6 +131,7 @@ def drop_segment_topics_if_query_general(query: str, hits: List[Dict[str, Any]])
     for h in hits:
         # Unificamos los 3 campos a un solo texto para chequear segmentos
         topic_parts = [
+            h.get("page_segment") or "",
             h.get("topic_heuristic") or "",
             h.get("topic_llm") or "",
             h.get("topic_content") or "",

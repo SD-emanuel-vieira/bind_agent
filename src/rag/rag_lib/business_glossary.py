@@ -19,10 +19,15 @@ BUSINESS_GLOSSARY_V2 = {
         "contado con liquidacion tc", "ccl tc"
     ]},
 
-    "i.a.": {"desc": "Interanual (año contra año).", "aliases": [
-        "interanual", "a/a", "aa", "yoy", "yo-y", "year over year",
-        "año contra año", "año vs año", "ano contra ano", "ano vs ano"
+    "var. i.a": {"desc": "Variación interanual KPI", "aliases": [
+        # "Variación", "Variacion", "variación", "variacion", "variation", "VAR.",
+         "Var.i.a", "Var. i.a", "var.i.a"
     ]},
+
+    # "i.a.": {"desc": "Interanual (año contra año).", "aliases": [
+    #     "interanual", "a/a", "aa", "yoy", "yo-y", "year over year",
+    #     "año contra año", "año vs año", "ano contra ano", "ano vs ano"
+    # ]},
 
     "BADLAR": {"desc": "Tasa BADLAR: tasa de referencia en Argentina para depósitos a plazo fijo mayoristas (típicamente > ARS 1M) a ~30–35 días.", "aliases": [
         "tasa badlar", "badlar bancos privados", "badlar privados", "badlar 30 dias",
@@ -77,10 +82,10 @@ BUSINESS_GLOSSARY_V2 = {
         "rentabilidad sobre el patrimonio", "rentabilidad sobre equity", "retorno sobre equity"
     ]},
 
-    # "Com": {"desc": "Comisiones", "aliases": [
-    #     "comision", "comisión", "comisiones", "fees", "fee",
-    #     "cargos por comision", "cargos por comisión", "comis"
-    # ]},
+    "comision": {"desc": "Comisiones", "aliases": [
+        "comision", "comisión", "comisiones", "fees", "fee",
+        "cargos por comision", "cargos por comisión", "comis"
+    ]},
 
     "ARS": {"desc": "Pesos Argentinos", "aliases": [
         "peso argentino", "pesos argentinos", "pesos", "ars",
@@ -142,6 +147,12 @@ BUSINESS_GLOSSARY_V2 = {
     "IIBB": {"desc": "Ingresos Brutos", "aliases": [
         "iibb", "ii.bb", "ingresos brutos", "impuesto a los ingresos brutos",
         "gross income tax", "tax iibb"
+    ]},
+
+    "IIGG": {"desc": "Impuesto a las ganancias", "aliases": [
+        "iigg", "ii.gg", "impuesto a las ganancias", "impuesto a las ganancias brutas",
+        "impuesto a las ganancias ordinarias", "impuesto a las ganancias ordinarias brutas",
+        "impuesto a las ganancias"
     ]},
 
     "HC":  {"desc": "Head Count", "aliases": [

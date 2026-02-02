@@ -1,3 +1,13 @@
+"""
+retriever.py - Módulo de recuperación de candidatos para RAG
+
+Contiene:
+- Inicialización del cliente de Vector Search
+- Búsqueda por similitud (embeddings)
+- Búsqueda lexical (FULL_TEXT fallback)
+- Función principal retrieve_candidates()
+"""
+
 import re
 import json
 import time
@@ -5,15 +15,54 @@ from typing import Any, Dict, List, Optional, Tuple
 import os
 import requests
 from mlflow.utils.databricks_utils import get_databricks_host_creds
-from rag_lib.config import *
-from rag_lib.text_utils import *
+from databricks.vector_search.client import VectorSearchClient
 
-# -------------------------
-# CELL 3: Lexical fallback via Vector Search FULL_TEXT (serving-friendly)
-# - No Spark required (works in Model Serving)
-# - Queries the same Vector Search index using query_type=FULL_TEXT
-# - Merges + dedupes with existing hits
-# -------------------------
+from rag_lib.config import (
+    VS_ENDPOINT, 
+    VS_INDEX_FULL_NAME, 
+    VS_COLUMNS, 
+    TOP_K_CANDIDATES, 
+    LEX_FALLBACK_LIMIT,
+    CHUNK_TYPE_QUERY_GATES
+)
+from rag_lib.text_utils import (
+    parse_vs_similarity_response, 
+    strip_chunk_prefix, 
+    filter_hits_by_query_gates
+)
+from rag_lib.glossary_helper import glossary_expand_terms
+from rag_lib.llm import expand_query_for_retrieval
+from rag_lib.embeddings import embed_query
+
+
+# ============================================================
+# INICIALIZACIÓN DEL CLIENTE DE VECTOR SEARCH
+# ============================================================
+# Se inicializa de forma lazy (al primer uso) para evitar errores
+# si el módulo se importa pero no se usa.
+
+_vsc: Optional[VectorSearchClient] = None
+_index = None
+
+
+def _get_index():
+    """
+    Obtiene el índice de Vector Search, inicializándolo si es necesario.
+    Usa patrón singleton para evitar múltiples conexiones.
+    """
+    global _vsc, _index
+    
+    if _index is None:
+        _vsc = VectorSearchClient()
+        _index = _vsc.get_index(VS_ENDPOINT, VS_INDEX_FULL_NAME)
+        print(f"[retriever] Index inicializado: {VS_INDEX_FULL_NAME}")
+    
+    return _index
+
+
+# ============================================================
+# AUTENTICACIÓN DATABRICKS (para FULL_TEXT queries)
+# ============================================================
 def _get_dbx_auth() -> Tuple[str, str]:
     """Get Databricks host + token.
 
@@ -28,7 +77,6 @@ def _get_dbx_auth() -> Tuple[str, str]:
     # 2) MLflow helper (usually works in Databricks notebooks)
     if not host or not token:
         try:
-            # from mlflow.utils.databricks_utils import get_databricks_host_creds
             creds = get_databricks_host_creds()
             host = host or (getattr(creds, "host", "") or "").rstrip("/")
             token = token or (getattr(creds, "token", "") or "")
@@ -38,7 +86,6 @@ def _get_dbx_auth() -> Tuple[str, str]:
     # 3) Notebook context fallback (best-effort)
     if not host or not token:
         try:
-            # Only import pyspark in notebook clusters; in serving this may not exist
             from pyspark.sql import SparkSession
             spark = SparkSession.getActiveSession() or SparkSession.builder.getOrCreate()
             if not host:
@@ -56,6 +103,10 @@ def _get_dbx_auth() -> Tuple[str, str]:
 
     return host, token
 
+
+# ============================================================
+# FULL_TEXT QUERY (Lexical Search)
+# ============================================================
 def _vs_full_text_query(
     index_name: str,
     query_text: str,
@@ -95,8 +146,19 @@ def _vs_full_text_query(
         out.append(d)
     return out
 
-def lexical_fallback(query: str, hits: List[Dict[str, Any]], limit: int = LEX_FALLBACK_LIMIT) -> List[Dict[str, Any]]:
-    """Best-effort: agrega matches lexicográficos desde Vector Search index (FULL_TEXT)."""
+
+# ============================================================
+# LEXICAL FALLBACK
+# ============================================================
+def lexical_fallback(
+    query: str, 
+    hits: List[Dict[str, Any]], 
+    limit: int = LEX_FALLBACK_LIMIT
+) -> List[Dict[str, Any]]:
+    """
+    Best-effort: agrega matches lexicográficos desde Vector Search index (FULL_TEXT).
+    Merge + dedupe con hits existentes.
+    """
     q = (query or "").strip()
     if not q:
         return hits
@@ -109,27 +171,8 @@ def lexical_fallback(query: str, hits: List[Dict[str, Any]], limit: int = LEX_FA
             num_results=limit,
             filters=None,
         )
-        print(f"Full-text search retornó: {len(rows)} resultados")
-    
-        print(f"Total resultados: {len(rows)}\n")
-
-        # for i, r in enumerate(rows[:LEX_FALLBACK_LIMIT], 1):
-        #     topic = r.get("topic_heuristic", "")
-        #     chunk = r.get("chunk_text", "")[:200]
-            
-        #     has_gasto_in_topic = "gasto" in topic.lower()
-        #     has_gasto_in_chunk = "gasto" in chunk.lower()
-            
-        #     print(f"--- Resultado {i} ---")
-        #     print(f"  topic_heuristic: {topic[:80]}")
-        #     print(f"  'gasto' en topic: {has_gasto_in_topic}")
-        #     print(f"  'gasto' en chunk_text: {has_gasto_in_chunk}")
-        #     print(f"  chunk_text (preview): {chunk[:100]}...")
-        #     print()
-
     except Exception as e:
-        # If serving env doesn't have auth configured, do not break main flow.
-        print("Lexical FULL_TEXT fallback failed. Error:", repr(e))
+        print(f"[retriever] Lexical FULL_TEXT fallback failed: {repr(e)}")
         return hits
 
     lex_hits: List[Dict[str, Any]] = []
@@ -149,83 +192,97 @@ def lexical_fallback(query: str, hits: List[Dict[str, Any]], limit: int = LEX_FA
         seen.add(key)
         merged.append(h)
 
-    # print(f"lexical_fallback: {len(merged)} hits")
-
     return merged
 
-# # -------------------------
-# # CELL 5: RETRIEVER (Vector Search + expansion + lexical fallback)
-# # - Guarantees lexical fallback is merged even if vector search fails
-# # -------------------------
-# def retrieve_candidates(query: str, k: int = TOP_K_CANDIDATES) -> List[Dict[str, Any]]:
-#     hits: List[Dict[str, Any]] = []
 
-#     # ✅ default (por si falla el try)
-#     q_fulltext = query
+# ============================================================
+# FUNCIÓN PRINCIPAL: retrieve_candidates
+# ============================================================
+def retrieve_candidates(query: str, k: int = TOP_K_CANDIDATES) -> List[Dict[str, Any]]:
+    """
+    Recupera candidatos usando:
+    1. Vector Search (similitud semántica con embeddings)
+    2. Lexical fallback (FULL_TEXT para términos exactos)
+    3. Filtrado por query gates (ej: excluir gráficos si no aplica)
+    
+    Args:
+        query: Pregunta del usuario
+        k: Número máximo de candidatos a recuperar
+        
+    Returns:
+        Lista de hits (chunks) candidatos, deduplicados por chunk_id
+    """
+    hits: List[Dict[str, Any]] = []
+    q_fulltext = query  # default por si falla el try
 
-#     # 1) Try vector search (best effort)
-#     try:
-#         gl = glossary_expand_terms(query)
-#         terms = gl.get("terms", []) or []
-#         acronyms = gl.get("acronyms", []) or []
+    # 1) Try vector search (best effort)
+    try:
+        # Expandir query con glosario
+        gl = glossary_expand_terms(query)
+        terms = gl.get("terms", []) or []
+        acronyms = gl.get("acronyms", []) or []
 
-#         q_llm = expand_query_for_retrieval(query) or query
+        # Expandir query con LLM
+        q_llm = expand_query_for_retrieval(query) or query
 
-#         # Query para embeddings/vector: más rica (mejor semántica)
-#         q_embed = q_llm
-#         if terms:
-#             q_embed = q_embed + "\n\nGLOSSARY TERMS: " + " | ".join(terms)
+        # Query para embeddings/vector: más rica (mejor semántica)
+        q_embed = q_llm
+        if terms:
+            q_embed = q_embed + "\n\nGLOSSARY TERMS: " + " | ".join(terms)
 
-#         # Helper de quoting para FULL_TEXT
-#         def _qt(t: str) -> str:
-#             t = (t or "").strip()
-#             return f'"{t}"' if " " in t else t
+        # Helper de quoting para FULL_TEXT
+        def _qt(t: str) -> str:
+            t = (t or "").strip()
+            return f'"{t}"' if " " in t else t
 
-#         # ✅ FULL_TEXT "glossary-focused" si hay acrónimos relevantes (evita dilución)
-#         # (Ignoramos acrónimos de 1 letra tipo R/E)
-#         focus_acronyms = [a.strip() for a in acronyms if isinstance(a, str) and len(a.strip()) >= 2]
+        # FULL_TEXT "glossary-focused" si hay acrónimos relevantes
+        focus_acronyms = [a.strip() for a in acronyms if isinstance(a, str) and len(a.strip()) >= 2]
 
-#         if focus_acronyms:
-#             # FULL_TEXT más "afilado": buscar directo por ROA/ROE/etc
-#             q_fulltext = " ".join(_qt(a) for a in focus_acronyms)
-#         else:
-#             # FULL_TEXT estándar: query + términos (como estaba antes)
-#             q_fulltext = query
-#             if terms:
-#                 q_fulltext = q_fulltext + " " + " ".join(_qt(t) for t in terms)
+        if focus_acronyms:
+            q_fulltext = " ".join(_qt(a) for a in focus_acronyms)
+        else:
+            q_fulltext = query
+            if terms:
+                q_fulltext = q_fulltext + " " + " ".join(_qt(t) for t in terms)
 
-#         qvec = embed_query(q_embed)
+        # Generar embedding
+        qvec = embed_query(q_embed)
 
-#         if qvec:
-#             res = index.similarity_search(
-#                 query_vector=qvec,  # direct access index requires query_vector
-#                 columns=VS_COLUMNS,
-#                 num_results=k
-#             )
-#             hits = parse_vs_similarity_response(res)
+        if qvec:
+            # ============================================================
+            # CLAVE: Obtener el índice de forma lazy
+            # ============================================================
+            index = _get_index()
+            
+            res = index.similarity_search(
+                query_vector=qvec,
+                columns=VS_COLUMNS,
+                num_results=k
+            )
+            hits = parse_vs_similarity_response(res)
 
-#             for h in hits:
-#                 raw = (h.get("chunk_text") or "").strip()
-#                 h["chunk_text_clean"] = strip_chunk_prefix(raw)
+            for h in hits:
+                raw = (h.get("chunk_text") or "").strip()
+                h["chunk_text_clean"] = strip_chunk_prefix(raw)
 
-#     except Exception as e:
-#         print("Vector retrieval failed, fallback lexical only. Error:", repr(e))
-#         hits = []
-#         q_fulltext = query  # ✅ aseguramos valor válido
+    except Exception as e:
+        print(f"[retriever] Vector retrieval failed, fallback lexical only. Error: {repr(e)}")
+        hits = []
+        q_fulltext = query
 
-#     # # 2) Always add lexical fallback (FULL_TEXT)
-#     # hits = lexical_fallback(q_fulltext, hits, limit=LEX_FALLBACK_LIMIT)
+    # 2) Always add lexical fallback (FULL_TEXT)
+    hits = lexical_fallback(q_fulltext, hits, limit=LEX_FALLBACK_LIMIT)
 
-#     # 2.1) Exclude evidence that would be chart analysis
-#     hits = filter_hits_by_query_gates(query, hits, CHUNK_TYPE_QUERY_GATES)
+    # 2.1) Exclude evidence that would be chart analysis (si no tiene keywords)
+    hits = filter_hits_by_query_gates(query, hits, CHUNK_TYPE_QUERY_GATES)
 
-#     # 3) Merge + dedupe by chunk_id
-#     merged = []
-#     seen = set()
-#     for h in hits:
-#         cid = h.get("chunk_id")
-#         if cid and cid not in seen:
-#             merged.append(h)
-#             seen.add(cid)
+    # 3) Merge + dedupe by chunk_id
+    merged = []
+    seen = set()
+    for h in hits:
+        cid = h.get("chunk_id")
+        if cid and cid not in seen:
+            merged.append(h)
+            seen.add(cid)
 
-#     return merged
+    return merged
