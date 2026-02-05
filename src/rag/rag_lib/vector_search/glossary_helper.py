@@ -11,7 +11,7 @@ import re
 import unicodedata
 from difflib import SequenceMatcher
 from typing import Any, Dict, List, Optional, Tuple, Set
-from rag_lib.business_glossary import BUSINESS_GLOSSARY_V2
+from rag_lib.vector_search.business_glossary import BUSINESS_GLOSSARY_V2
 
 
 def _norm(s: str) -> str:

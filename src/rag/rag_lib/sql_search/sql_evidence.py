@@ -4,7 +4,6 @@ import mlflow
 from mlflow.deployments import get_deploy_client
 from typing import List, Dict, Any
 from contextlib import contextmanager
-
 from pyspark.sql import SparkSession
 
 # Obtener la sesión de Spark activa
@@ -149,8 +148,8 @@ def validate_sql(sql: str, table: str):
 def text_to_sql(question: str, table: str, schema_txt: str) -> str:
     # Prompt mejorado: más explícito sobre funciones en inglés
     system = '''Sos experto en SQL Spark (Databricks). Devolvé SOLO SQL válido. Nada de explicación.
-IMPORTANTE: Usá funciones de Spark SQL en INGLÉS (contains, lower, trim, etc). NO uses funciones en español.'''
-    
+    IMPORTANTE: Usá funciones de Spark SQL en INGLÉS (contains, lower, trim, etc). NO uses funciones en español.'''
+        
     user = f"""
         Generá una query SQL Spark para responder la pregunta usando SOLO esta tabla: {table}
 
@@ -165,7 +164,7 @@ IMPORTANTE: Usá funciones de Spark SQL en INGLÉS (contains, lower, trim, etc).
         Ejemplo: contains(lower(cliente), lower('santander'))
         - NUNCA uses "contiene", "contener" u otras funciones en español. Solo funciones Spark SQL en inglés.
         - No uses '=' para filtrar valores de texto.
-        - Cuando se pregunte por "resultado neto", "resultado bruto" o "IIBB", se tiene que hacer una suma por ese campo.
+        - Cuando se pregunte por "resultado neto", "resultado bruto", "IIBB", "interes cobrado" o "interes pagado" se tiene que hacer una suma por ese campo agrupado por el campo "moneda".
         - Si preguntan por valor de un campo como "tasa activa" en los filtros se deben excluir registros null para ese campo:
         Ejemplo: tasa_activa IS NOT NULL
         - Devolvé SOLO el SQL (sin ```).
@@ -183,7 +182,6 @@ IMPORTANTE: Usá funciones de Spark SQL en INGLÉS (contains, lower, trim, etc).
 # =========================================================================
 # FUNCIÓN PRINCIPAL: Evidencia estructurada para integración con RAG
 # =========================================================================
-
 def get_sql_evidence(question: str) -> Dict[str, Any]:
     """
     Genera evidencia estructurada a partir de una query SQL.
@@ -197,6 +195,7 @@ def get_sql_evidence(question: str) -> Dict[str, Any]:
             "answer": str | None,
             "raw_data": str | None,
             "source": str,
+            "query": str | None,           # ← NUEVO
             "error_type": str | None,
             "error_message": str | None
         }
@@ -207,6 +206,7 @@ def get_sql_evidence(question: str) -> Dict[str, Any]:
         "answer": None,
         "raw_data": None,
         "source": "tabla_excel_financiera",
+        "query": None,                      # ← NUEVO
         "error_type": None,
         "error_message": None
     }
@@ -215,6 +215,7 @@ def get_sql_evidence(question: str) -> Dict[str, Any]:
     try:
         schema_txt = get_schema_text()
         sql = text_to_sql(question, TABLE_, schema_txt)
+        result["query"] = sql               # ← NUEVO: Guardar la query generada
     except Exception as e:
         result["error_type"] = "sql_generation"
         result["error_message"] = str(e)[:200] if len(str(e)) > 200 else str(e)
@@ -226,13 +227,13 @@ def get_sql_evidence(question: str) -> Dict[str, Any]:
     if not r['ok']:
         result["error_type"] = "sql_execution"
         result["error_message"] = r['error']
-        return result
+        return result                       # ← Ya tiene result["query"] = sql
     
     if not r['has_rows']:
         result["success"] = True
         result["error_type"] = "no_rows"
         result["error_message"] = "La consulta no retornó resultados"
-        return result
+        return result                       # ← Ya tiene result["query"] = sql
     
     # Paso 3: Generar respuesta en lenguaje natural
     result["raw_data"] = r['preview']
@@ -258,7 +259,6 @@ def get_sql_evidence(question: str) -> Dict[str, Any]:
         result["has_data"] = True
         
     except Exception as e:
-        # Tenemos datos pero falló la generación de respuesta
         result["success"] = True
         result["has_data"] = True
         result["error_type"] = "answer_generation"

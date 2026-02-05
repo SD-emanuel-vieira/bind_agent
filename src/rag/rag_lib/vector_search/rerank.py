@@ -12,10 +12,10 @@ import unicodedata
 from difflib import SequenceMatcher
 from typing import Any, Dict, List, Optional, Tuple, Set
 from rag_lib.config import *
-from rag_lib.text_utils import safe_json_load
-from rag_lib.text_utils import shorten
-from rag_lib.llm import call_chat
-from rag_lib.business_glossary import BUSINESS_GLOSSARY_V2
+from rag_lib.text_utils import safe_json_load, shorten
+
+from rag_lib.vector_search.llm import call_chat
+from rag_lib.vector_search.business_glossary import BUSINESS_GLOSSARY_V2
 
 
 def tie_break_by_date_in_blocks(hits, block_size=2):

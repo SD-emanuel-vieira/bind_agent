@@ -4,11 +4,12 @@ from rag_lib.secret_functions import *
 from rag_lib.config import *
 from rag_lib.text_utils import *
 
-from rag_lib.retriever import retrieve_candidates
-from rag_lib.rerank import tie_break_by_date_in_blocks,enforce_anchor_priority,rerank_with_llm,trace_stage
-from rag_lib.glossary_helper import prepare_rerank_candidates_glossary_aware
-from rag_lib.evidence_handling import build_context, extract_evidence, answer_from_evidence
-from rag_lib.extract_query import answer_sql, get_sql_evidence, is_evidence_usable, build_sql_response
+from rag_lib.vector_search.retriever import retrieve_candidates
+from rag_lib.vector_search.rerank import tie_break_by_date_in_blocks,enforce_anchor_priority,rerank_with_llm,trace_stage
+from rag_lib.vector_search.glossary_helper import prepare_rerank_candidates_glossary_aware
+from rag_lib.vector_search.evidence_handling import build_context, extract_evidence, answer_from_evidence
+from rag_lib.sql_search.sql_evidence import answer_sql, get_sql_evidence, is_evidence_usable, build_sql_response
+from rag_lib.sql_search.smart_routing import validate_and_route, should_try_sql
 
 print("Config OK")
 print("VS endpoint:", VS_ENDPOINT)
@@ -20,19 +21,36 @@ print("LLM endpoint:", LLM_ENDPOINT)
 # Orchestrator (end-to-end RAG)
 # -------------------------
 def answer_with_rag(query: str) -> Dict[str, Any]:
-    
+
     # =========================================================================
-    # PASO 0: Intentar responder con SQL primero (early exit si es exitoso)
+    # FLUJO SQL
     # =========================================================================
-    sql_evidence = get_sql_evidence(query)
+
+    # Pre-validación: ¿vale la pena intentar SQL?
+    try_sql, skip_reason = should_try_sql(query)
     
-    if is_evidence_usable(sql_evidence):
-        # Early exit: tenemos respuesta válida desde la tabla SQL
-        # print(build_sql_response(query, sql_evidence))
+    sql_evidence = None
+    
+    if try_sql:
+        sql_evidence = get_sql_evidence(query)
+        
+        # Post-validación semántica
+        if sql_evidence:
+            routing = validate_and_route(
+                question=query,
+                sql_query=sql_evidence.get('query'),        # ← Cambiar a .get()
+                sql_result=sql_evidence.get('raw_data'),    # ← raw_data tiene los datos
+                sql_error=sql_evidence.get('error_message') # ← error_message tiene el error
+            )
+            
+            if not routing["use_sql"]:
+                sql_evidence = None
+    else:
+        print(f"ℹ️ Saltando SQL: {skip_reason}")
+    
+    if sql_evidence and is_evidence_usable(sql_evidence):
+        print(answer_sql(query)) # Solo DEBUG
         return build_sql_response(query, sql_evidence)
-    
-    # Si SQL no fue exitoso, continuar con el flujo RAG normal
-    # (sql_evidence.success=False, has_data=False, answer=None, o error)
     
     # =========================================================================
     # FLUJO RAG NORMAL (cuando SQL no tiene respuesta)

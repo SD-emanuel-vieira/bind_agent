@@ -30,9 +30,9 @@ from rag_lib.text_utils import (
     strip_chunk_prefix, 
     filter_hits_by_query_gates
 )
-from rag_lib.glossary_helper import glossary_expand_terms
-from rag_lib.llm import expand_query_for_retrieval
-from rag_lib.embeddings import embed_query
+from rag_lib.vector_search.glossary_helper import glossary_expand_terms
+from rag_lib.vector_search.llm import expand_query_for_retrieval
+from rag_lib.vector_search.embeddings import embed_query
 
 
 # ============================================================

@@ -1,0 +1,246 @@
+pregunta,respuesta,evidencias
+¿Cuál es el dato de previsiones para octubre 2025?,"1) El documento presenta diferentes valores de previsiones para octubre de 2025.
+
+Resumen por elementos:
+- Previsiones & Otros octubre 2025: -7,525 [S1]
+- Previsiones & Otros octubre 2025: -6,078 [S2]
+
+Lectura rápida: Los documentos presentan dos valores diferentes para 'Previsiones & Otros' en octubre de 2025: -7,525 y -6,078.","[Doc 1] Fecha: 2025-11-18 | Archivo: dbfs:/Volumes/bind_agent/docs/pdf/Directorio BIND Banco 18-11-2025 Final.pptx.pdf | Pág: 12.0 | Chunk: bb658864d14538df078a1ce35684fc86c4542781a30d128bdcca31644952634d
+[Doc 2] Fecha: 2025-11-03 | Archivo: dbfs:/Volumes/bind_agent/docs/pdf/CdG_Intro_2025_11_03 draftv2..pptx.pdf | Pág: 8.0 | Chunk: ec931e9990226a2d58295016d4bc43c4d3dd08baef095fa821d6527422434930
+[Doc 3] Fecha: 2025-11-18 | Archivo: dbfs:/Volumes/bind_agent/docs/pdf/Directorio BIND Banco 18-11-2025 Final.pptx.pdf | Pág: 13.0 | Chunk: d7f3e90b1da9224a03a6d14be3e84da258c6b67a5f011b24e0d0e578e2068359
+[Doc 4] Fecha: 2025-11-03 | Archivo: dbfs:/Volumes/bind_agent/docs/pdf/CdG_Intro_2025_11_03 draftv2..pptx.pdf | Pág: 9.0 | Chunk: 569c848a96c960c64ebfb4ced03c38c34a066235bb35954ba49dd578849d531c
+[Doc 5] Fecha: 2025-11-03 | Archivo: dbfs:/Volumes/bind_agent/docs/pdf/CdG_Intro_2025_11_03 draftv2..pptx.pdf | Pág: 10.0 | Chunk: aa624da1ddc16bcd6bcd68d1d46075eb3d055e801acf4ccf2afe573d3216ae7f
+[Fuente de respuesta: vector_rag]"
+¿Cuáles son los valores de previsiones para octubre 2025 por segmento?,"1) El documento muestra los valores de previsiones para octubre 2025 por segmento.
+
+Resumen por elementos:
+- Empresas: -1,026 AR$MM (Previsiones & Otros para octubre 2025) [S1]
+- Corporate: -936 AR$MM (Previsiones & Otros para octubre 2025) [S2]
+
+Lectura rápida: Los valores de previsiones para octubre 2025 son negativos tanto para el segmento Empresas como para Corporate, con -1,026 AR$MM y -936 AR$MM respectivamente.","[Doc 1] Fecha: 2025-11-18 | Archivo: dbfs:/Volumes/bind_agent/docs/pdf/Directorio BIND Banco 18-11-2025 Final.pptx.pdf | Pág: 26.0 | Chunk: 97269a64e716a7a1b1026c084b41b52ead10e50d81b6f5ef510df0da5d7500cf
+[Doc 2] Fecha: 2025-11-18 | Archivo: dbfs:/Volumes/bind_agent/docs/pdf/Directorio BIND Banco 18-11-2025 Final.pptx.pdf | Pág: 24.0 | Chunk: 970fbd03fe6a1c6747a074c5b73d9f6c76a6ff344e4a82327d82faa02bf76041
+[Doc 3] Fecha: 2025-11-18 | Archivo: dbfs:/Volumes/bind_agent/docs/pdf/Directorio BIND Banco 18-11-2025 Final.pptx.pdf | Pág: 25.0 | Chunk: 0f025067b42371fe0aca825fb17fbf9e89a6012156c316748d657f918aebf04b
+[Doc 4] Fecha: 2025-11-03 | Archivo: dbfs:/Volumes/bind_agent/docs/pdf/CdG_Intro_2025_11_03 draftv2..pptx.pdf | Pág: 14.0 | Chunk: 39dc85bd8f6b710958e862d9e875e148f0ebdeaa0f86eb9722a673cc81793702
+[Doc 5] Fecha: 2025-11-18 | Archivo: dbfs:/Volumes/bind_agent/docs/pdf/Directorio BIND Banco 18-11-2025 Final.pptx.pdf | Pág: 11.0 | Chunk: 0665d5cf5e6a2284cb9c03aafc11d33a07511d4e4f179752f4152b93e230599c
+[Fuente de respuesta: vector_rag]"
+¿Cuáles es el valor de previsiones para octubre 2025 para empresas?,"RESPUESTA DIRECTA: El valor de previsiones para octubre 2025 para Empresas es 3,000MM.
+
+DETALLE:
+* El valor de previsiones para Empresas en octubre 2025 es 3,000MM con un incremento de 1,800MM [S1][S2].
+* El desglose de previsiones para Empresas incluye: Norton 2,100MM (PCE 70%), Grand Benoit 160MM (Stage 2), y SA Trendy 125MM (Stage 2) [S1][S2].
+* Para Corporate, el valor de previsiones en octubre 2025 es 935MM, con un incremento de 560MM en S1 y un decremento en S2 [S1][S2].
+* Para Institutional, el valor de previsiones en octubre 2025 es 70MM [S1][S2].
+* El desglose de previsiones para Corporate incluye: Pilisar 200MM (+Cartera), Newan 170MM (+Cartera), y All Road 160MM (Stage 2) [S1][S2].
+* Para Institutional, el desglose incluye: Tarjeta Naranja 55MM (+Cartera) [S1][S2].","[Doc 1] Fecha: 2025-11-18 | Archivo: dbfs:/Volumes/bind_agent/docs/pdf/Directorio BIND Banco 18-11-2025 Final.pptx.pdf | Pág: 11.0 | Chunk: 0665d5cf5e6a2284cb9c03aafc11d33a07511d4e4f179752f4152b93e230599c
+[Doc 2] Fecha: 2025-11-03 | Archivo: dbfs:/Volumes/bind_agent/docs/pdf/CdG_Intro_2025_11_03 draftv2..pptx.pdf | Pág: 7.0 | Chunk: 6b11f8d0e55be05ec852f83eede37344e6045eafc6420b58070d97147e7a6db8
+[Doc 3] Fecha: 2025-11-18 | Archivo: dbfs:/Volumes/bind_agent/docs/pdf/Directorio BIND Banco 18-11-2025 Final.pptx.pdf | Pág: 26.0 | Chunk: 97269a64e716a7a1b1026c084b41b52ead10e50d81b6f5ef510df0da5d7500cf
+[Doc 4] Fecha: 2025-11-03 | Archivo: dbfs:/Volumes/bind_agent/docs/pdf/CdG_Intro_2025_11_03 draftv2..pptx.pdf | Pág: 15.0 | Chunk: c6cb07c64a640a18e6fdb333c4ec728366e33e63bef113dedac96f5ced858099
+[Doc 5] Fecha: 2025-11-03 | Archivo: dbfs:/Volumes/bind_agent/docs/pdf/CdG_Intro_2025_11_03 draftv2..pptx.pdf | Pág: 6.0 | Chunk: c9d9a6c135f053835c209059a70fb822dfc43ce155142ee398787f29bc7e046b
+[Fuente de respuesta: vector_rag]"
+Cual es el retorno sobre activos para octubre de 2025?,"1) ONE-LINER: El retorno sobre activos (ROA) para octubre de 2025 es 3,9% según la gestión contable y 4,5% según la gestión.
+
+2) 'Resumen por elementos':
+   - ROA | Contable: 3,9% [S1]
+   - ROA | Gestión: 4,5% [S1]
+
+3) 'Lectura rápida': El ROA para octubre de 2025 es 3,9% según la gestión contable y 4,5% según la gestión.","[Doc 1] Fecha: 2025-11-18 | Archivo: dbfs:/Volumes/bind_agent/docs/pdf/Directorio BIND Banco 18-11-2025 Final.pptx.pdf | Pág: 14.0 | Chunk: c4a529601637caccbbc5afd7ea89651ab82c35d7170b3658607e8bcd843f24cc
+[Doc 2] Fecha: 2025-11-03 | Archivo: dbfs:/Volumes/bind_agent/docs/pdf/CdG_Intro_2025_11_03 draftv2..pptx.pdf | Pág: 10.0 | Chunk: aa624da1ddc16bcd6bcd68d1d46075eb3d055e801acf4ccf2afe573d3216ae7f
+[Doc 3] Fecha: 2025-11-18 | Archivo: dbfs:/Volumes/bind_agent/docs/pdf/Directorio BIND Banco 18-11-2025 Final.pptx.pdf | Pág: 5.0 | Chunk: 3b5853d0cc67da4d7af04aa87e9cb2465cc60d52f7781bc0b7b14d2e517ff3e7
+[Doc 4] Fecha: 2025-11-18 | Archivo: dbfs:/Volumes/bind_agent/docs/pdf/Directorio BIND Banco 18-11-2025 Final.pptx.pdf | Pág: 4.0 | Chunk: f9ef526fd7d4f9c054b363c4a84bf2c8809f8228863ac766154ea36161d5e190
+[Doc 5] Fecha: 2025-11-18 | Archivo: dbfs:/Volumes/bind_agent/docs/pdf/Directorio BIND Banco 18-11-2025 Final.pptx.pdf | Pág: 20.0 | Chunk: dd3407e2fd2ee78e00dfb63c6fde5f455485317e0c903d023ee7034e5bff415c
+[Fuente de respuesta: vector_rag]"
+Cual es el retorno sobre patrimonio para octubre de 2025?,"1) El retorno sobre patrimonio (ROE) para octubre de 2025 es 31,8% contable y 36,5% de gestión.
+
+## Resumen por elementos
+- ROE | Contable: 31,8% [S1]
+- ROE | Gestión: 36,5% [S1]
+
+## Lectura rápida
+El retorno sobre patrimonio (ROE) para octubre de 2025 fue 31,8% contable y 36,5% de gestión según los indicadores financieros reportados.","[Doc 1] Fecha: 2025-11-18 | Archivo: dbfs:/Volumes/bind_agent/docs/pdf/Directorio BIND Banco 18-11-2025 Final.pptx.pdf | Pág: 14.0 | Chunk: c4a529601637caccbbc5afd7ea89651ab82c35d7170b3658607e8bcd843f24cc
+[Doc 2] Fecha: 2025-11-03 | Archivo: dbfs:/Volumes/bind_agent/docs/pdf/CdG_Intro_2025_11_03 draftv2..pptx.pdf | Pág: 10.0 | Chunk: aa624da1ddc16bcd6bcd68d1d46075eb3d055e801acf4ccf2afe573d3216ae7f
+[Doc 3] Fecha: 2025-11-18 | Archivo: dbfs:/Volumes/bind_agent/docs/pdf/Directorio BIND Banco 18-11-2025 Final.pptx.pdf | Pág: 5.0 | Chunk: 3b5853d0cc67da4d7af04aa87e9cb2465cc60d52f7781bc0b7b14d2e517ff3e7
+[Doc 4] Fecha: 2025-11-03 | Archivo: dbfs:/Volumes/bind_agent/docs/pdf/CdG_Intro_2025_11_03 draftv2..pptx.pdf | Pág: 8.0 | Chunk: ec931e9990226a2d58295016d4bc43c4d3dd08baef095fa821d6527422434930
+[Doc 5] Fecha: 2025-11-18 | Archivo: dbfs:/Volumes/bind_agent/docs/pdf/Directorio BIND Banco 18-11-2025 Final.pptx.pdf | Pág: 13.0 | Chunk: d7f3e90b1da9224a03a6d14be3e84da258c6b67a5f011b24e0d0e578e2068359
+[Fuente de respuesta: vector_rag]"
+Como ha sido la evolución del ROE?,"**Evolución del ROE:**
+
+El ROE de gestión disminuyó de 72,3% en septiembre de 2025 a 36,5% en octubre de 2025. Por otro lado, el ROE contable aumentó de 24,0% en septiembre de 2025 a 31,8% en octubre de 2025. En términos de YTD (Year to Date) 2025, el ROE de gestión fue de 15,7%, mientras que el ROE contable fue de 20,0% [S2].
+
+**Detalles de la evolución del ROE:**
+
+*   El ROE de gestión disminuyó de 72,3% a 36,5% entre septiembre y octubre de 2025 [S2].
+*   El ROE contable aumentó de 24,0% a 31,8% entre septiembre y octubre de 2025 [S2].
+*   El ROE de gestión YTD'25 fue 15,7%, inferior al presupuesto de 30,2% [S2].
+*   El ROE contable YTD'25 fue 20,0%, inferior al presupuesto de 26,3% [S2].
+*   Un gráfico de líneas en la página 30 del documento muestra la evolución del ROE a lo largo del tiempo, aunque los valores exactos no son legibles [S1].","[Doc 1] Fecha: 2025-11-18 | Archivo: dbfs:/Volumes/bind_agent/docs/pdf/Directorio BIND Banco 18-11-2025 Final.pptx.pdf | Pág: 30.0 | Chunk: 9bda57d0443d061bd0e0431948106e2846936277e62541f2782988bad6c828f6
+[Doc 2] Fecha: 2025-11-18 | Archivo: dbfs:/Volumes/bind_agent/docs/pdf/Directorio BIND Banco 18-11-2025 Final.pptx.pdf | Pág: 14.0 | Chunk: c4a529601637caccbbc5afd7ea89651ab82c35d7170b3658607e8bcd843f24cc
+[Doc 3] Fecha: 2025-11-03 | Archivo: dbfs:/Volumes/bind_agent/docs/pdf/CdG_Intro_2025_11_03 draftv2..pptx.pdf | Pág: 10.0 | Chunk: aa624da1ddc16bcd6bcd68d1d46075eb3d055e801acf4ccf2afe573d3216ae7f
+[Doc 4] Fecha: 2025-11-18 | Archivo: dbfs:/Volumes/bind_agent/docs/pdf/Directorio BIND Banco 18-11-2025 Final.pptx.pdf | Pág: 16.0 | Chunk: fec1a7e7425bb72111dc84ee7c1594599d6ccea30c58748424e919f2da8d83d0
+[Doc 5] Fecha: 2025-11-18 | Archivo: dbfs:/Volumes/bind_agent/docs/pdf/Directorio BIND Banco 18-11-2025 Final.pptx.pdf | Pág: 21.0 | Chunk: bc9710eae32266842588d5e49085e6cd97d292dc13f8255d9e577f72c6ab7943
+[Fuente de respuesta: vector_rag]"
+¿Como ha sido la evolución del ROE a lo largo del tiempo?,"El ROE ha fluctuado a lo largo del tiempo, mostrando diferentes tendencias según la serie de datos. 
+- La serie de datos azul muestra una tendencia a estabilizarse después de fluctuaciones [S1].
+- La serie de datos roja muestra una tendencia más errática [S1].
+- La serie de datos gris muestra una tendencia descendente inicial seguida de fluctuaciones [S1].
+- El ROE varía entre 4% y 15% en el período de Octubre '24 a Octubre '25 [S2].","[Doc 1] Fecha: 2025-11-18 | Archivo: dbfs:/Volumes/bind_agent/docs/pdf/Directorio BIND Banco 18-11-2025 Final.pptx.pdf | Pág: 30.0 | Chunk: 9bda57d0443d061bd0e0431948106e2846936277e62541f2782988bad6c828f6
+[Doc 2] Fecha: 2025-11-18 | Archivo: dbfs:/Volumes/bind_agent/docs/pdf/Directorio BIND Banco 18-11-2025 Final.pptx.pdf | Pág: 16.0 | Chunk: fec1a7e7425bb72111dc84ee7c1594599d6ccea30c58748424e919f2da8d83d0
+[Doc 3] Fecha: 2025-11-18 | Archivo: dbfs:/Volumes/bind_agent/docs/pdf/Directorio BIND Banco 18-11-2025 Final.pptx.pdf | Pág: 21.0 | Chunk: bc9710eae32266842588d5e49085e6cd97d292dc13f8255d9e577f72c6ab7943
+[Doc 4] Fecha: 2025-11-18 | Archivo: dbfs:/Volumes/bind_agent/docs/pdf/Directorio BIND Banco 18-11-2025 Final.pptx.pdf | Pág: 31.0 | Chunk: 82ff8162a10dde6fa735159d222deb4784a3e08cd46d3883e048296163a77366
+[Doc 5] Fecha: 2025-11-18 | Archivo: dbfs:/Volumes/bind_agent/docs/pdf/Directorio BIND Banco 18-11-2025 Final.pptx.pdf | Pág: 18.0 | Chunk: 9bb4ccc35afa668057d5ebd1da73367d941777ac0010507b84e580940bb94fa0
+[Fuente de respuesta: vector_rag]"
+Como ha sido la evolución del ROA?,"El ROA ha mostrado una tendencia ascendente inicial seguida de fluctuaciones. Específicamente, el ROA | Gestión pasó de 1,7% Real YTD'25 a 11,3% en Sep'25, mientras que el ROA | Contable pasó de 2,2% Real YTD'25 a 3,8% en Sep'25.
+
+* El ROA muestra una tendencia ascendente inicial seguida de fluctuaciones [S1].
+* El ROA | Gestión pasó de 1,7% a 11,3% entre YTD'25 y Sep'25 [S2, S3].
+* El ROA | Contable pasó de 2,2% a 3,8% entre YTD'25 y Sep'25 [S2, S3].
+* Los valores de ROA | Gestión y ROA | Contable en Oct'25 fueron 4,5% y 3,9%, respectivamente [S2].
+* Los valores de ROA | Gestión y ROA | Contable en YTD'25 fueron 1,7% y 2,2%, respectivamente [S2, S3].
+* La variación entre el ROA | Gestión de Sep'25 y Oct'25 fue significativa, pasando de 11,3% a 4,5% [S2].","[Doc 1] Fecha: 2025-11-18 | Archivo: dbfs:/Volumes/bind_agent/docs/pdf/Directorio BIND Banco 18-11-2025 Final.pptx.pdf | Pág: 30.0 | Chunk: 9bda57d0443d061bd0e0431948106e2846936277e62541f2782988bad6c828f6
+[Doc 2] Fecha: 2025-11-18 | Archivo: dbfs:/Volumes/bind_agent/docs/pdf/Directorio BIND Banco 18-11-2025 Final.pptx.pdf | Pág: 14.0 | Chunk: c4a529601637caccbbc5afd7ea89651ab82c35d7170b3658607e8bcd843f24cc
+[Doc 3] Fecha: 2025-11-03 | Archivo: dbfs:/Volumes/bind_agent/docs/pdf/CdG_Intro_2025_11_03 draftv2..pptx.pdf | Pág: 10.0 | Chunk: aa624da1ddc16bcd6bcd68d1d46075eb3d055e801acf4ccf2afe573d3216ae7f
+[Doc 4] Fecha: 2025-11-18 | Archivo: dbfs:/Volumes/bind_agent/docs/pdf/Directorio BIND Banco 18-11-2025 Final.pptx.pdf | Pág: 31.0 | Chunk: 82ff8162a10dde6fa735159d222deb4784a3e08cd46d3883e048296163a77366
+[Doc 5] Fecha: 2025-11-18 | Archivo: dbfs:/Volumes/bind_agent/docs/pdf/Directorio BIND Banco 18-11-2025 Final.pptx.pdf | Pág: 21.0 | Chunk: bc9710eae32266842588d5e49085e6cd97d292dc13f8255d9e577f72c6ab7943
+[Fuente de respuesta: vector_rag]"
+¿Cómo fue el resultado comercial sin ajuste por inflación en septiembre de 2025 y cuál ha sido el acumulado del año 2025?,"1) ONE-LINER: El documento presenta el resultado comercial sin ajuste por inflación y el acumulado del año 2025 para una entidad financiera.
+
+2) 'Resumen por elementos':
+   - Resultado Comercial Nominal (sep-25): 24,571 [S1, S2]
+   - Resultado Comercial Nominal (2025 YTD): 76,329 [S1]
+
+3) 'Lectura rápida': El resultado comercial sin ajuste por inflación en septiembre de 2025 fue de 24,571, y el acumulado del año 2025 fue de 76,329.","[Doc 1] Fecha: 2025-11-18 | Archivo: dbfs:/Volumes/bind_agent/docs/pdf/Directorio BIND Banco 18-11-2025 Final.pptx.pdf | Pág: 12.0 | Chunk: bb658864d14538df078a1ce35684fc86c4542781a30d128bdcca31644952634d
+[Doc 2] Fecha: 2025-11-03 | Archivo: dbfs:/Volumes/bind_agent/docs/pdf/CdG_Intro_2025_11_03 draftv2..pptx.pdf | Pág: 8.0 | Chunk: ec931e9990226a2d58295016d4bc43c4d3dd08baef095fa821d6527422434930
+[Doc 3] Fecha: 2025-11-18 | Archivo: dbfs:/Volumes/bind_agent/docs/pdf/Directorio BIND Banco 18-11-2025 Final.pptx.pdf | Pág: 13.0 | Chunk: d7f3e90b1da9224a03a6d14be3e84da258c6b67a5f011b24e0d0e578e2068359
+[Doc 4] Fecha: 2025-11-03 | Archivo: dbfs:/Volumes/bind_agent/docs/pdf/CdG_Intro_2025_11_03 draftv2..pptx.pdf | Pág: 9.0 | Chunk: 569c848a96c960c64ebfb4ced03c38c34a066235bb35954ba49dd578849d531c
+[Doc 5] Fecha: 2025-11-03 | Archivo: dbfs:/Volumes/bind_agent/docs/pdf/CdG_Intro_2025_11_03 draftv2..pptx.pdf | Pág: 10.0 | Chunk: aa624da1ddc16bcd6bcd68d1d46075eb3d055e801acf4ccf2afe573d3216ae7f
+[Fuente de respuesta: vector_rag]"
+¿Cómo es el TNA para octubre 2024 para leasing?,"1) ONE-LINER: El TNA para leasing en octubre 2024 es 44%.
+
+2) 'Resumen por elementos':
+   - TNA para leasing en octubre 2024: 44% [S1]
+
+3) 'Lectura rápida': El TNA para leasing en octubre 2024 fue del 44%, con una variación mensual (MoM) de -0% y una variación anual (YoY) de 15%.","[Doc 1] Fecha: 2025-11-18 | Archivo: dbfs:/Volumes/bind_agent/docs/pdf/Directorio BIND Banco 18-11-2025 Final.pptx.pdf | Pág: 37.0 | Chunk: ddf49997137503220f2607ec4646d96bf8a9fb09d4725ddcca566dea0622963c
+[Doc 2] Fecha: 2025-11-18 | Archivo: dbfs:/Volumes/bind_agent/docs/pdf/Directorio BIND Banco 18-11-2025 Final.pptx.pdf | Pág: 4.0 | Chunk: f9ef526fd7d4f9c054b363c4a84bf2c8809f8228863ac766154ea36161d5e190
+[Doc 3] Fecha: 2025-11-18 | Archivo: dbfs:/Volumes/bind_agent/docs/pdf/Directorio BIND Banco 18-11-2025 Final.pptx.pdf | Pág: 36.0 | Chunk: 0d35bb6abab5195271c9296a31eba750a467791dd05720a47fe3d936d6bb2a46
+[Doc 4] Fecha: 2025-11-18 | Archivo: dbfs:/Volumes/bind_agent/docs/pdf/Directorio BIND Banco 18-11-2025 Final.pptx.pdf | Pág: 5.0 | Chunk: 3b5853d0cc67da4d7af04aa87e9cb2465cc60d52f7781bc0b7b14d2e517ff3e7
+[Doc 5] Fecha: 2025-11-18 | Archivo: dbfs:/Volumes/bind_agent/docs/pdf/Directorio BIND Banco 18-11-2025 Final.pptx.pdf | Pág: 21.0 | Chunk: 76e383247faf71d422eb0257c546271a050bc79f17e69870ac8d326c854494e9
+[Fuente de respuesta: vector_rag]"
+Cual fue el resultado comercial neto de corporate para 2025?,"RESPUESTA DIRECTA: El resultado comercial neto de corporate para 2025 fue de 3,058 millones de AR$.
+
+DETALLE:
+* El valor de 'Resultado Comercial Neto AxI' en la tabla de P&L Corporate para 2025 YTD es 3,058 [S1].
+* La tabla de P&L Corporate muestra los resultados financieros para diferentes períodos, incluyendo el acumulado YTD (Year to Date) para 2025 [S1].
+* El 'Resultado Comercial Neto AxI' es una métrica que representa el resultado comercial nominal ajustado por inflación [REGLAS DE NEGOCIO].
+* El valor de 3,058 millones de AR$ corresponde al 'Resultado Comercial Neto AxI' acumulado YTD para 2025 en el segmento Corporate [S1].","[Doc 1] Fecha: 2025-11-18 | Archivo: dbfs:/Volumes/bind_agent/docs/pdf/Directorio BIND Banco 18-11-2025 Final.pptx.pdf | Pág: 24.0 | Chunk: 970fbd03fe6a1c6747a074c5b73d9f6c76a6ff344e4a82327d82faa02bf76041
+[Doc 2] Fecha: 2025-11-03 | Archivo: dbfs:/Volumes/bind_agent/docs/pdf/CdG_Intro_2025_11_03 draftv2..pptx.pdf | Pág: 13.0 | Chunk: 56c45933fb8c2b14fb0624b730aca39c27d2bd752f50d343986bddb1210b960a
+[Doc 3] Fecha: 2025-11-18 | Archivo: dbfs:/Volumes/bind_agent/docs/pdf/Directorio BIND Banco 18-11-2025 Final.pptx.pdf | Pág: 11.0 | Chunk: 0665d5cf5e6a2284cb9c03aafc11d33a07511d4e4f179752f4152b93e230599c
+[Doc 4] Fecha: 2025-11-03 | Archivo: dbfs:/Volumes/bind_agent/docs/pdf/CdG_Intro_2025_11_03 draftv2..pptx.pdf | Pág: 7.0 | Chunk: 6b11f8d0e55be05ec852f83eede37344e6045eafc6420b58070d97147e7a6db8
+[Doc 5] Fecha: 2025-11-18 | Archivo: dbfs:/Volumes/bind_agent/docs/pdf/Directorio BIND Banco 18-11-2025 Final.pptx.pdf | Pág: 38.0 | Chunk: 6d5d1ad45c4e8b0b17dbc0e676ede3d75e9ebe2d84ba35ed5091c8367e3b849a
+[Fuente de respuesta: vector_rag]"
+Cual fue el resultado comercial neto AxI de corporate para 2025?,"RESPUESTA DIRECTA: El resultado comercial neto AxI de corporate para 2025 fue 3,058.
+
+DETALLE:
+* El Resultado Comercial Neto AxI de corporate para 2025 fue 3,058 [S1].
+* El Resultado Comercial Nominal de corporate para 2025 fue 6,956 [S1].
+* El AxI (Ajuste por Inflación) de corporate para 2025 fue -3,899 [S1].
+* El Resultado Comercial Neto AxI se calcula como Resultado Comercial Nominal + AxI, lo que da 6,956 + (-3,899) = 3,058 [S1].
+* Los ingresos totales de corporate para 2025 YTD fueron 12,368 [S1].
+* El Resultado Operativo de corporate para 2025 YTD fue 8,064 [S1].
+* El IIGG (Impuesto a las Ganancias) de corporate para 2025 YTD fue -1,108 [S1].","[Doc 1] Fecha: 2025-11-18 | Archivo: dbfs:/Volumes/bind_agent/docs/pdf/Directorio BIND Banco 18-11-2025 Final.pptx.pdf | Pág: 24.0 | Chunk: 970fbd03fe6a1c6747a074c5b73d9f6c76a6ff344e4a82327d82faa02bf76041
+[Doc 2] Fecha: 2025-11-03 | Archivo: dbfs:/Volumes/bind_agent/docs/pdf/CdG_Intro_2025_11_03 draftv2..pptx.pdf | Pág: 13.0 | Chunk: 56c45933fb8c2b14fb0624b730aca39c27d2bd752f50d343986bddb1210b960a
+[Doc 3] Fecha: 2025-11-18 | Archivo: dbfs:/Volumes/bind_agent/docs/pdf/Directorio BIND Banco 18-11-2025 Final.pptx.pdf | Pág: 11.0 | Chunk: 0665d5cf5e6a2284cb9c03aafc11d33a07511d4e4f179752f4152b93e230599c
+[Doc 4] Fecha: 2025-11-03 | Archivo: dbfs:/Volumes/bind_agent/docs/pdf/CdG_Intro_2025_11_03 draftv2..pptx.pdf | Pág: 7.0 | Chunk: 6b11f8d0e55be05ec852f83eede37344e6045eafc6420b58070d97147e7a6db8
+[Doc 5] Fecha: 2025-11-18 | Archivo: dbfs:/Volumes/bind_agent/docs/pdf/Directorio BIND Banco 18-11-2025 Final.pptx.pdf | Pág: 38.0 | Chunk: 6d5d1ad45c4e8b0b17dbc0e676ede3d75e9ebe2d84ba35ed5091c8367e3b849a
+[Fuente de respuesta: vector_rag]"
+Cuales fueron las previsiones de corporate por cada mes de 2025?,"RESPUESTA DIRECTA: Las previsiones de corporate para cada mes de 2025 fueron -176, -49, -64, -866, -630, -1,256, -865, -938, -1,498 y -936 millones de pesos argentinos.
+
+DETALLE:
+* Las previsiones de corporate en enero de 2025 fueron -176 millones de pesos argentinos [S1].
+* Las previsiones de corporate en febrero de 2025 fueron -49 millones de pesos argentinos [S1].
+* Las previsiones de corporate en marzo de 2025 fueron -64 millones de pesos argentinos [S1].
+* Las previsiones de corporate en abril de 2025 fueron -866 millones de pesos argentinos [S1].
+* Las previsiones de corporate en mayo de 2025 fueron -630 millones de pesos argentinos [S1].
+* Las previsiones de corporate en junio de 2025 fueron -1,256 millones de pesos argentinos [S1].
+* Las previsiones de corporate en julio de 2025 fueron -865 millones de pesos argentinos [S1].
+* Las previsiones de corporate en agosto de 2025 fueron -938 millones de pesos argentinos [S1].
+* Las previsiones de corporate en septiembre de 2025 fueron -1,498 millones de pesos argentinos [S1].
+* Las previsiones de corporate en octubre de 2025 fueron -936 millones de pesos argentinos [S1].","[Doc 1] Fecha: 2025-11-18 | Archivo: dbfs:/Volumes/bind_agent/docs/pdf/Directorio BIND Banco 18-11-2025 Final.pptx.pdf | Pág: 24.0 | Chunk: 970fbd03fe6a1c6747a074c5b73d9f6c76a6ff344e4a82327d82faa02bf76041
+[Doc 2] Fecha: 2025-11-03 | Archivo: dbfs:/Volumes/bind_agent/docs/pdf/CdG_Intro_2025_11_03 draftv2..pptx.pdf | Pág: 13.0 | Chunk: 56c45933fb8c2b14fb0624b730aca39c27d2bd752f50d343986bddb1210b960a
+[Doc 3] Fecha: 2025-11-18 | Archivo: dbfs:/Volumes/bind_agent/docs/pdf/Directorio BIND Banco 18-11-2025 Final.pptx.pdf | Pág: 11.0 | Chunk: 0665d5cf5e6a2284cb9c03aafc11d33a07511d4e4f179752f4152b93e230599c
+[Doc 4] Fecha: 2025-11-03 | Archivo: dbfs:/Volumes/bind_agent/docs/pdf/CdG_Intro_2025_11_03 draftv2..pptx.pdf | Pág: 7.0 | Chunk: 6b11f8d0e55be05ec852f83eede37344e6045eafc6420b58070d97147e7a6db8
+[Doc 5] Fecha: 2025-11-18 | Archivo: dbfs:/Volumes/bind_agent/docs/pdf/Directorio BIND Banco 18-11-2025 Final.pptx.pdf | Pág: 39.0 | Chunk: 1e9446e17a66cc9568ba16cb94e9e9f0cfaa303f63dabdb2fc277a3fb33cd533
+[Fuente de respuesta: vector_rag]"
+Cual es la diferencia entre el acumulado de 2025 real vs el presupuestado?,"1) ONE-LINER: El documento muestra la comparación entre los resultados reales y presupuestados para 2025, destacando diferencias significativas en ingresos y resultados operativos.
+
+## Resumen por elementos:
+- Ingresos 2025 YTD real: 215,615 [S3]
+- Ingresos 2025 YTD presupuestado: 295,616 [S3]
+- Diferencia Ingresos 2025 YTD real vs presupuestado: -80,001 (-27%) [S3]
+- Resultado Operativo 2025 YTD real: 85,160 [S3]
+- Resultado Operativo 2025 YTD presupuestado: 170,514 [S3]
+- Diferencia Resultado Operativo 2025 YTD real vs presupuestado: -85,354 (-50%) [S3]
+- Resultado Gestión Neto AxI 2025 YTD real: 42,904 [S3]
+- Resultado Gestión Neto AxI 2025 YTD presupuestado: 88,429 [S3]
+- Diferencia Resultado Gestión Neto AxI 2025 YTD real vs presupuestado: -45,525 (-51%) [S3]
+
+## Lectura rápida: El acumulado real de 2025 está por debajo del presupuestado en ingresos y resultados operativos, con diferencias significativas en varias métricas clave.","[Doc 1] Fecha: 2025-11-18 | Archivo: dbfs:/Volumes/bind_agent/docs/pdf/Directorio BIND Banco 18-11-2025 Final.pptx.pdf | Pág: 14.0 | Chunk: c4a529601637caccbbc5afd7ea89651ab82c35d7170b3658607e8bcd843f24cc
+[Doc 2] Fecha: 2025-11-03 | Archivo: dbfs:/Volumes/bind_agent/docs/pdf/CdG_Intro_2025_11_03 draftv2..pptx.pdf | Pág: 10.0 | Chunk: aa624da1ddc16bcd6bcd68d1d46075eb3d055e801acf4ccf2afe573d3216ae7f
+[Doc 3] Fecha: 2025-11-18 | Archivo: dbfs:/Volumes/bind_agent/docs/pdf/Directorio BIND Banco 18-11-2025 Final.pptx.pdf | Pág: 12.0 | Chunk: bb658864d14538df078a1ce35684fc86c4542781a30d128bdcca31644952634d
+[Doc 4] Fecha: 2025-11-03 | Archivo: dbfs:/Volumes/bind_agent/docs/pdf/CdG_Intro_2025_11_03 draftv2..pptx.pdf | Pág: 8.0 | Chunk: ec931e9990226a2d58295016d4bc43c4d3dd08baef095fa821d6527422434930
+[Doc 5] Fecha: 2025-11-18 | Archivo: dbfs:/Volumes/bind_agent/docs/pdf/Directorio BIND Banco 18-11-2025 Final.pptx.pdf | Pág: 13.0 | Chunk: d7f3e90b1da9224a03a6d14be3e84da258c6b67a5f011b24e0d0e578e2068359
+[Fuente de respuesta: vector_rag]"
+cuál es la variación entre el acumulado del Resultado Comercial Gestion Neto AXI para 2025 vs el presupuestado para 2025?,"1) La variación entre el acumulado del Resultado Comercial Gestión Neto AXI para 2025 vs el presupuestado para 2025 es -45,525, lo que representa una variación porcentual de -51%.
+
+## Resumen por elementos
+- Resultado Gestión Neto AxI acumulado 2025: 42,904 [S1]
+- Resultado Gestión Neto AxI presupuestado 2025: 88,429 [S1]
+- Variación entre acumulado y presupuestado: -45,525 [S1]
+- Porcentaje de variación: -51% [S1]
+
+## Lectura rápida
+El Resultado Gestión Neto AXI acumulado para 2025 fue 42,904, mientras que el presupuestado fue 88,429, resultando en una variación negativa de 45,525 y un porcentaje de variación de -51%.","[Doc 1] Fecha: 2025-11-18 | Archivo: dbfs:/Volumes/bind_agent/docs/pdf/Directorio BIND Banco 18-11-2025 Final.pptx.pdf | Pág: 12.0 | Chunk: bb658864d14538df078a1ce35684fc86c4542781a30d128bdcca31644952634d
+[Doc 2] Fecha: 2025-11-03 | Archivo: dbfs:/Volumes/bind_agent/docs/pdf/CdG_Intro_2025_11_03 draftv2..pptx.pdf | Pág: 8.0 | Chunk: ec931e9990226a2d58295016d4bc43c4d3dd08baef095fa821d6527422434930
+[Doc 3] Fecha: 2025-11-18 | Archivo: dbfs:/Volumes/bind_agent/docs/pdf/Directorio BIND Banco 18-11-2025 Final.pptx.pdf | Pág: 14.0 | Chunk: c4a529601637caccbbc5afd7ea89651ab82c35d7170b3658607e8bcd843f24cc
+[Doc 4] Fecha: 2025-11-03 | Archivo: dbfs:/Volumes/bind_agent/docs/pdf/CdG_Intro_2025_11_03 draftv2..pptx.pdf | Pág: 10.0 | Chunk: aa624da1ddc16bcd6bcd68d1d46075eb3d055e801acf4ccf2afe573d3216ae7f
+[Doc 5] Fecha: 2025-11-18 | Archivo: dbfs:/Volumes/bind_agent/docs/pdf/Directorio BIND Banco 18-11-2025 Final.pptx.pdf | Pág: 13.0 | Chunk: d7f3e90b1da9224a03a6d14be3e84da258c6b67a5f011b24e0d0e578e2068359
+[Fuente de respuesta: vector_rag]"
+cuál es la diferencia entre el Resultado Comercial Gestion Neto AXI acumulado para 2025 vs lo presupuestado para 2025?,"1) La diferencia entre el Resultado Comercial Gestion Neto AXI acumulado para 2025 vs lo presupuestado para 2025 es -45,525 o -51%.
+
+## Resumen por elementos:
+- Resultado Gestión Neto AxI acumulado para 2025: 42,904 [S1]
+- Resultado Gestión Neto AxI presupuestado para 2025: 109,132 [S1]
+- Diferencia entre Resultado Gestión Neto AxI acumulado y presupuestado para 2025: -45,525 o -51% [S1]
+
+## Lectura rápida:
+El Resultado Gestión Neto AxI acumulado para 2025 está 51% por debajo del presupuesto.","[Doc 1] Fecha: 2025-11-18 | Archivo: dbfs:/Volumes/bind_agent/docs/pdf/Directorio BIND Banco 18-11-2025 Final.pptx.pdf | Pág: 12.0 | Chunk: bb658864d14538df078a1ce35684fc86c4542781a30d128bdcca31644952634d
+[Doc 2] Fecha: 2025-11-03 | Archivo: dbfs:/Volumes/bind_agent/docs/pdf/CdG_Intro_2025_11_03 draftv2..pptx.pdf | Pág: 8.0 | Chunk: ec931e9990226a2d58295016d4bc43c4d3dd08baef095fa821d6527422434930
+[Doc 3] Fecha: 2025-11-18 | Archivo: dbfs:/Volumes/bind_agent/docs/pdf/Directorio BIND Banco 18-11-2025 Final.pptx.pdf | Pág: 14.0 | Chunk: c4a529601637caccbbc5afd7ea89651ab82c35d7170b3658607e8bcd843f24cc
+[Doc 4] Fecha: 2025-11-03 | Archivo: dbfs:/Volumes/bind_agent/docs/pdf/CdG_Intro_2025_11_03 draftv2..pptx.pdf | Pág: 10.0 | Chunk: aa624da1ddc16bcd6bcd68d1d46075eb3d055e801acf4ccf2afe573d3216ae7f
+[Doc 5] Fecha: 2025-11-18 | Archivo: dbfs:/Volumes/bind_agent/docs/pdf/Directorio BIND Banco 18-11-2025 Final.pptx.pdf | Pág: 13.0 | Chunk: d7f3e90b1da9224a03a6d14be3e84da258c6b67a5f011b24e0d0e578e2068359
+[Fuente de respuesta: vector_rag]"
+Calcula la diferencia porcentual entre el Resultado Comercial Neto AxI acumulado para 2025 vs lo presupuestado para 2025,"1) ONE-LINER: El documento muestra la diferencia porcentual entre el Resultado Comercial Neto AxI acumulado para 2025 y lo presupuestado para 2025.
+
+## Resumen por elementos:
+- Resultado Comercial Neto AxI acumulado para 2025: 35,192 [S1]
+- Resultado Comercial Neto AxI presupuestado para 2025: 109,132 [S1]
+- Diferencia porcentual entre el Resultado Comercial Neto AxI acumulado y presupuestado para 2025: -60% [S1]
+
+## Lectura rápida: El Resultado Comercial Neto AxI acumulado para 2025 es 35,192, mientras que lo presupuestado fue 109,132, lo que representa una diferencia porcentual de -60%.","[Doc 1] Fecha: 2025-11-18 | Archivo: dbfs:/Volumes/bind_agent/docs/pdf/Directorio BIND Banco 18-11-2025 Final.pptx.pdf | Pág: 12.0 | Chunk: bb658864d14538df078a1ce35684fc86c4542781a30d128bdcca31644952634d
+[Doc 2] Fecha: 2025-11-03 | Archivo: dbfs:/Volumes/bind_agent/docs/pdf/CdG_Intro_2025_11_03 draftv2..pptx.pdf | Pág: 8.0 | Chunk: ec931e9990226a2d58295016d4bc43c4d3dd08baef095fa821d6527422434930
+[Doc 3] Fecha: 2025-11-18 | Archivo: dbfs:/Volumes/bind_agent/docs/pdf/Directorio BIND Banco 18-11-2025 Final.pptx.pdf | Pág: 14.0 | Chunk: c4a529601637caccbbc5afd7ea89651ab82c35d7170b3658607e8bcd843f24cc
+[Doc 4] Fecha: 2025-11-03 | Archivo: dbfs:/Volumes/bind_agent/docs/pdf/CdG_Intro_2025_11_03 draftv2..pptx.pdf | Pág: 10.0 | Chunk: aa624da1ddc16bcd6bcd68d1d46075eb3d055e801acf4ccf2afe573d3216ae7f
+[Doc 5] Fecha: 2025-11-18 | Archivo: dbfs:/Volumes/bind_agent/docs/pdf/Directorio BIND Banco 18-11-2025 Final.pptx.pdf | Pág: 13.0 | Chunk: d7f3e90b1da9224a03a6d14be3e84da258c6b67a5f011b24e0d0e578e2068359
+[Fuente de respuesta: vector_rag]"
+Dame el resultado neto para el cliente santander para julio 2025,"No encuentro esa información.
+
+La evidencia proporcionada no incluye el resultado neto para el cliente Santander para julio de 2025. Las tablas disponibles muestran información sobre el P&L (Beneficios y Pérdidas) y la evolución del patrimonio neto, pero no contienen datos específicos para el cliente Santander en julio de 2025.
+
+* La tabla [S1] presenta datos del P&L hasta octubre de 2025, pero no incluye información específica para el cliente Santander.
+* La tabla [S2] también muestra datos del P&L, con algunas variaciones menores en los números respecto a [S1], pero nuevamente no hay información específica para el cliente Santander.
+* La tabla [S3] muestra la evolución del patrimonio neto, pero no contiene la información solicitada.
+
+Dado que la información específica para el cliente Santander en julio de 2025 no está disponible en las tablas proporcionadas, no es posible proporcionar una respuesta directa a la pregunta.","[Doc 1] Fecha: 2025-11-18 | Archivo: dbfs:/Volumes/bind_agent/docs/pdf/Directorio BIND Banco 18-11-2025 Final.pptx.pdf | Pág: 12.0 | Chunk: bb658864d14538df078a1ce35684fc86c4542781a30d128bdcca31644952634d
+[Doc 2] Fecha: 2025-11-03 | Archivo: dbfs:/Volumes/bind_agent/docs/pdf/CdG_Intro_2025_11_03 draftv2..pptx.pdf | Pág: 8.0 | Chunk: ec931e9990226a2d58295016d4bc43c4d3dd08baef095fa821d6527422434930
+[Doc 3] Fecha: 2025-11-18 | Archivo: dbfs:/Volumes/bind_agent/docs/pdf/Directorio BIND Banco 18-11-2025 Final.pptx.pdf | Pág: 35.0 | Chunk: a28ce654b4efd9c05877df8fb686b458362cb724c0f890e407806f69e2672a79
+[Doc 4] Fecha: 2025-11-03 | Archivo: dbfs:/Volumes/bind_agent/docs/pdf/CdG_Intro_2025_11_03 draftv2..pptx.pdf | Pág: 4.0 | Chunk: d61ee8fe9d4dc1eb92820226a9ddd2e27c672ccb95e51b27812a5e9d497d0a9c
+[Doc 5] Fecha: 2025-11-18 | Archivo: dbfs:/Volumes/bind_agent/docs/pdf/Directorio BIND Banco 18-11-2025 Final.pptx.pdf | Pág: 8.0 | Chunk: bdd9340915e249a80b2a5edcf06a8d52a670a7bc223b9d729355a98dee21244d
+[Fuente de respuesta: vector_rag]"

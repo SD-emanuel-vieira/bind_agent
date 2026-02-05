@@ -14,9 +14,10 @@ import os
 import requests
 from rag_lib.config import *
 from rag_lib.text_utils import *
-from rag_lib.llm import call_chat
-from rag_lib.glossary_helper import glossary_snippet
-from rag_lib.business_rules import get_rules_snippet
+
+from rag_lib.vector_search.llm import call_chat
+from rag_lib.vector_search.glossary_helper import glossary_snippet
+from rag_lib.vector_search.business_rules import get_rules_snippet
 
 
 # -------------------------
