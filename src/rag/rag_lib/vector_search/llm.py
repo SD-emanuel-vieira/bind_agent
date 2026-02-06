@@ -5,16 +5,34 @@ from typing import Any, Dict, List, Optional, Tuple
 import os
 import requests
 import mlflow.deployments
-
 from rag_lib.text_utils import extract_chat_content
 from rag_lib.config import *
+import signal
+from contextlib import contextmanager
+
+class TimeoutError(Exception):
+    pass
+
+@contextmanager
+def timeout(seconds: int):
+    def handler(signum, frame):
+        raise TimeoutError(f"Operación excedió {seconds} segundos")
+    
+    old_handler = signal.signal(signal.SIGALRM, handler)
+    signal.alarm(seconds)
+    try:
+        yield
+    finally:
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, old_handler)
 
 # LLM call to chat
-def call_chat(endpoint: str, messages: List[Dict[str, str]], temperature: float, max_tokens: int) -> str:
-    payload = {"messages": messages, "temperature": temperature, "max_tokens": max_tokens}
-    client = mlflow.deployments.get_deploy_client("databricks")
-    resp = client.predict(endpoint=endpoint, inputs=payload)
-    return extract_chat_content(resp)
+def call_chat(endpoint: str, messages: List[Dict[str, str]], temperature: float, max_tokens: int, timeout_seconds: int = 30) -> str:
+    with timeout(timeout_seconds):
+        payload = {"messages": messages, "temperature": temperature, "max_tokens": max_tokens}
+        client = mlflow.deployments.get_deploy_client("databricks")
+        resp = client.predict(endpoint=endpoint, inputs=payload)
+        return extract_chat_content(resp)
 
 # -------------------------
 # CELL 2: Query expansion (ES -> keywords + EN)

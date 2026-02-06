@@ -1,11 +1,3 @@
-"""
-evidence_handling.py - Construcción de contexto, extracción de evidencia y generación de respuestas
-
-ACTUALIZADO:
-- Mejor uso del topic_heuristic/topic_llm para interpretar tablas sin headers
-- Instrucciones explícitas para que el LLM use el topic como contexto semántico
-"""
-
 import re
 import json
 import time
@@ -83,11 +75,10 @@ def build_context(hits: List[Dict[str, Any]], max_chars: int = MAX_CONTEXT_CHARS
 # Extracción de evidencia - MEJORADO
 # -------------------------
 def extract_evidence(query: str, hits: List[Dict[str, Any]]) -> Dict[str, Any]:
-    """
-    Extrae evidencia que soporte responder la pregunta.
     
-    MEJORADO: Instrucciones para interpretar tablas usando el topic como contexto.
-    """
+    if not hits:
+        return {"answerable": False, "missing": ["No se encontraron documentos"]}
+    
     context, _ = build_context(hits, max_chars=12000)
 
     system = (

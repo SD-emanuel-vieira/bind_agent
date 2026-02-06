@@ -1,16 +1,16 @@
 import os
+import re
 import logging
 import mlflow
 from mlflow.deployments import get_deploy_client
 from typing import List, Dict, Any
 from contextlib import contextmanager
 from pyspark.sql import SparkSession
+import time
+from rag_lib.config import TABLE_, LLM_ENDPOINT_SQL
 
 # Obtener la sesión de Spark activa
 spark = SparkSession.builder.getOrCreate()
-
-TABLE_ = 'bind_agent.docs.silver_excel'
-LLM_ENDPOINT = 'databricks-llama-4-maverick' 
 
 
 # =========================================================================
@@ -45,14 +45,18 @@ def schema_text(table: str) -> str:
     fields = spark.table(table).schema.fields
     return "\n".join([f"- {f.name}: {f.dataType.simpleString()}" for f in fields])
 
-# Lazy loading del schema
-_SCHEMA_TEXT_CACHE = None
+_SCHEMA_CACHE = {"text": None, "timestamp": 0}
+SCHEMA_CACHE_TTL = 3600  # 1 hora
 
 def get_schema_text() -> str:
-    global _SCHEMA_TEXT_CACHE
-    if _SCHEMA_TEXT_CACHE is None:
-        _SCHEMA_TEXT_CACHE = schema_text(TABLE_)
-    return _SCHEMA_TEXT_CACHE
+    global _SCHEMA_CACHE
+    now = time.time()
+    
+    if _SCHEMA_CACHE["text"] is None or (now - _SCHEMA_CACHE["timestamp"]) > SCHEMA_CACHE_TTL:
+        _SCHEMA_CACHE["text"] = schema_text(TABLE_)
+        _SCHEMA_CACHE["timestamp"] = now
+    
+    return _SCHEMA_CACHE["text"]
 
 def sql_tool(sql: str, n: int = 20) -> str:
     df = spark.sql(sql)
@@ -95,6 +99,22 @@ def extract_chat_content(resp) -> str:
 
     return str(resp)
 
+# class TimeoutError(Exception):
+#     pass
+
+# @contextmanager
+# def timeout(seconds: int):
+#     def handler(signum, frame):
+#         raise TimeoutError(f"Operación excedió {seconds} segundos")
+    
+#     old_handler = signal.signal(signal.SIGALRM, handler)
+#     signal.alarm(seconds)
+#     try:
+#         yield
+#     finally:
+#         signal.alarm(0)
+#         signal.signal(signal.SIGALRM, old_handler)
+
 def call_llm(endpoint: str, messages: List[Dict[str, str]], temperature: float = 0.2, max_tokens: int = 500) -> str:
     payload = {'messages': messages, 'temperature': temperature, 'max_tokens': max_tokens}
     client = get_deploy_client('databricks')
@@ -106,9 +126,7 @@ def call_llm_simple(system_prompt: str, user_prompt: str) -> str:
         {'role': 'system', 'content': system_prompt},
         {'role': 'user', 'content': user_prompt},
     ]
-    return call_llm(LLM_ENDPOINT, messages, temperature=0.2, max_tokens=500)
-
-FORBIDDEN = ['drop', 'delete', 'update', 'insert', 'alter', 'truncate', ';', '--', '/*', '*/']
+    return call_llm(LLM_ENDPOINT_SQL, messages, temperature=0.2, max_tokens=500)
 
 def clean_sql(sql: str) -> str:
     s = sql.strip()
@@ -132,18 +150,23 @@ def enforce_limit(sql: str, n: int = 20) -> str:
         return s + f'\nLIMIT {n}'
     return s
 
+FORBIDDEN_PATTERNS = [
+    r'\bdrop\b', r'\bdelete\b', r'\bupdate\b', r'\binsert\b', 
+    r'\balter\b', r'\btruncate\b', r'\bcreate\b', r'\bgrant\b',
+    r'--', r'/\*', r'\*/', r';(?!$)'  # Permitir ; solo al final
+]
+
 def validate_sql(sql: str, table: str):
-    s = ' ' + sql.strip().lower() + ' '
-
-    for bad in FORBIDDEN:
-        if bad in s:
-            raise ValueError(f'SQL bloqueada: {bad.strip()}')
-
+    s = sql.strip().lower()
+    for pattern in FORBIDDEN_PATTERNS:
+        if re.search(pattern, s):
+            raise ValueError(f'SQL bloqueada por patrón: {pattern}')
+    
     if table.lower() not in s:
         raise ValueError(f'La query SQL debe referenciar {table}')
-
-    if not s.strip().startswith('select'):
-        raise ValueError('La salida del modelo no parece una SELECT válida.')
+    
+    if not s.startswith('select'):
+        raise ValueError('Solo se permiten consultas SELECT')
 
 def text_to_sql(question: str, table: str, schema_txt: str) -> str:
     # Prompt mejorado: más explícito sobre funciones en inglés

@@ -12,8 +12,7 @@ import unicodedata
 from difflib import SequenceMatcher
 from typing import Any, Dict, List, Optional, Tuple, Set
 from rag_lib.config import *
-from rag_lib.text_utils import safe_json_load, shorten
-
+from rag_lib.text_utils import safe_json_load, shorten, normalize_text as _norm
 from rag_lib.vector_search.llm import call_chat
 from rag_lib.vector_search.business_glossary import BUSINESS_GLOSSARY_V2
 
@@ -25,14 +24,6 @@ def tie_break_by_date_in_blocks(hits, block_size=2):
         block.sort(key=lambda h: (h.get("file_date") is not None, h.get("file_date")), reverse=True)
         out.extend(block)
     return out
-
-
-# ---- Funciones de normalización y anchors ----
-def _norm(s: str) -> str:
-    s = (s or "").strip().lower()
-    s = "".join(ch for ch in unicodedata.normalize("NFKD", s) if not unicodedata.combining(ch))
-    s = re.sub(r"\s+", " ", s)
-    return s
 
 
 _STOP = {
@@ -195,8 +186,8 @@ def rerank_with_llm(query: str, hits: List[Dict[str, Any]], top_k: int = TOP_K_F
     max_anchor = max((h.get("_anchor_score", 0) for h in hits), default=0)
     
     # Umbral para "protección": chunks con score >= 80% del máximo están protegidos
-    protection_threshold = max(1, int(max_anchor * 0.8)) if max_anchor > 0 else 0
-    
+    protection_threshold = max(1, int(max_anchor * 0.8)) if max_anchor >= 1 else 0
+
     # Identificar hits protegidos (alto anchor score)
     protected_hits = [h for h in hits if h.get("_anchor_score", 0) >= protection_threshold and protection_threshold > 0]
     protected_ids = {h.get("chunk_id") for h in protected_hits}

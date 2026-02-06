@@ -4,11 +4,13 @@ import time
 from typing import Any, Dict, List, Optional, Tuple
 import os
 import unicodedata
+from typing import Any, Dict, List, Set, Tuple, Optional
+from collections import defaultdict
 from rag_lib.config import SEGMENTS, SEGMENT_ALIASES
 
-# -------------------------
-# # Helper functions (text cleaning + parsing)
-# -------------------------
+# ==============================================================================
+# SECCIÓN 1: UTILIDADES DE TEXTO PURO
+# ==============================================================================
 def strip_chunk_prefix(text: str) -> str:
     """Remove [SOURCE]/[TOPIC] prefix (if your gold chunks included it)."""
     if not text:
@@ -19,18 +21,25 @@ def shorten(text: str, n: int) -> str:
     t = (text or "").strip()
     return t if len(t) <= n else (t[:n].rstrip() + "…")
 
-def safe_json_load(s: str) -> Dict[str, Any]:
+def safe_json_load(s: str, log_errors: bool = True) -> Dict[str, Any]:
     s = (s or "").strip()
     if not s:
         return {}
+    
     i = s.find("{")
     j = s.rfind("}")
+    
     if i >= 0 and j > i:
         s2 = s[i:j+1]
         try:
             return json.loads(s2)
-        except Exception:
+        except json.JSONDecodeError as e:
+            if log_errors:
+                logger.warning(f"JSON parse failed: {e}. Input: {s2[:200]}...")
             return {}
+    
+    if log_errors:
+        logger.warning(f"No JSON found in: {s[:100]}...")
     return {}
 
 def extract_chat_content(resp: Any) -> str:
@@ -46,6 +55,46 @@ def extract_chat_content(resp: Any) -> str:
             if isinstance(p0, str):
                 return p0
     return str(resp)
+
+
+# ============================================================
+# FUNCIONES AUXILIARES
+# ============================================================
+
+def safe_get_str(d: dict, key: str, default: str = "") -> str:
+    """
+    Obtiene un valor de un diccionario como string normalizado.
+    
+    Maneja de forma segura:
+    - Keys que no existen
+    - Valores None
+    - Valores de tipos no-string
+    
+    Args:
+        d: Diccionario fuente
+        key: Key a buscar
+        default: Valor por defecto si no existe
+        
+    Returns:
+        Valor como string, o default si no existe/es None
+        
+    Example:
+        >>> safe_get_str({"name": "Test"}, "name")
+        'Test'
+        >>> safe_get_str({"count": 42}, "count")
+        '42'
+        >>> safe_get_str({}, "missing")
+        ''
+    """
+    val = d.get(key)
+    if val is None:
+        return default
+    return str(val)
+
+
+# ==============================================================================
+# SECCIÓN 2: PARSERS DE RESPUESTAS API
+# ==============================================================================
 
 def parse_vs_similarity_response(res: Any) -> List[Dict[str, Any]]:
     """Normalize Vector Search similarity_search response to list[dict]."""
@@ -81,12 +130,44 @@ def parse_vs_similarity_response(res: Any) -> List[Dict[str, Any]]:
         return res
     return []
 
-#### --------- Funciones para filtrar hits por gates (actualmente usado para excluir gráficos)
-def _norm_q(s: str) -> str:
-    s = (s or "").lower()
+# ==============================================================================
+# SECCIÓN 3: LÓGICA DE FILTRADO DE SEGMENTOS
+# ==============================================================================
+def normalize_text(s: str) -> str:
+    """
+    Normalización canónica para matching de texto.
+    Usado por: rerank, glossary_helper, business_rules, smart_routing
+    """
+    if not s:
+        return ""
+    s = s.strip().lower()
     s = "".join(ch for ch in unicodedata.normalize("NFKD", s) if not unicodedata.combining(ch))
     s = re.sub(r"\s+", " ", s).strip()
     return s
+
+def normalize_for_search(s: Optional[str]) -> str:
+    """
+    Normalización para búsqueda full-text.
+    
+    Similar a normalize_text pero con strip final adicional
+    para garantizar limpieza en búsquedas.
+    
+    Args:
+        s: Texto a normalizar
+        
+    Returns:
+        Texto normalizado y limpio para búsqueda
+    """
+    return normalize_text(s).strip()
+    
+# ============================================================
+# ALIASES PARA COMPATIBILIDAD HACIA ATRÁS
+# ============================================================
+# Estos aliases permiten que el código existente siga funcionando
+# sin necesidad de modificar los imports inmediatamente.
+
+_norm = normalize_text
+_norm_for_match = normalize_for_search
 
 def filter_hits_by_query_gates(query: str, hits: list[dict], gates: dict[str, list[str]]) -> list[dict]:
     """
@@ -118,12 +199,6 @@ ACTUALIZADO:
   2. Query CON segmento específico → mantener SOLO hits con ese segmento
   3. Query COMPARATIVA entre segmentos → mantener hits de TODOS los segmentos (balanceado)
 """
-
-import re
-import unicodedata
-from typing import Any, Dict, List, Set, Tuple
-from collections import defaultdict
-
 
 # Patrones que indican query comparativa entre segmentos
 COMPARATIVE_PATTERNS = [
@@ -193,17 +268,21 @@ def _detect_segment_in_query(query: str) -> Set[str]:
     
     return detected
 
+def _safe_get_str(d: dict, key: str) -> str:
+    """Obtiene valor como string, manejando None y tipos no-string."""
+    val = d.get(key)
+    if val is None:
+        return ""
+    return str(val)
 
 def _hit_has_segment(hit: Dict[str, Any], segment: str) -> bool:
-    """
-    Verifica si un hit menciona un segmento específico en sus topics.
-    """
     topic_parts = [
-        hit.get("page_segment") or "",
-        hit.get("topic_heuristic") or "",
-        hit.get("topic_llm") or "",
-        hit.get("topic_content") or "",
+        _safe_get_str(hit, "page_segment"),
+        _safe_get_str(hit, "topic_heuristic"),
+        _safe_get_str(hit, "topic_llm"),
+        _safe_get_str(hit, "topic_content"),
     ]
+    
     topic_combined = _norm_q(" ".join(topic_parts))
     
     for alias, canonical in SEGMENT_ALIASES.items():

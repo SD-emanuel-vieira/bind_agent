@@ -16,6 +16,9 @@ VS_INDEX_FULL_NAME = _get_env("RAG_VS_INDEX_FULL_NAME")
 EMBED_ENDPOINT = _get_env("RAG_EMBED_ENDPOINT")  # for query_vector
 EMB_ENDPOINT = EMBED_ENDPOINT  # backward-compatible alias
 LLM_ENDPOINT = _get_env("RAG_LLM_ENDPOINT")
+TABLE_ = 'bind_agent.docs.silver_excel'
+LLM_ENDPOINT_SQL = _get_env("RAG_LLM_ENDPOINT")
+# LLM_ENDPOINT_SQL = 'databricks-llama-4-maverick' 
 # LLM_ENDPOINT = _get_env("RAG_LLM_ENDPOINT", default="databricks-gpt-5-2")
 # LLM_ENDPOINT = "databricks-gpt-5-2"
 

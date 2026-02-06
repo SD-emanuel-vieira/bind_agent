@@ -1,13 +1,3 @@
-"""
-retriever.py - Módulo de recuperación de candidatos para RAG
-
-Contiene:
-- Inicialización del cliente de Vector Search
-- Búsqueda por similitud (embeddings)
-- Búsqueda lexical (FULL_TEXT fallback)
-- Función principal retrieve_candidates()
-"""
-
 import re
 import json
 import time
@@ -34,6 +24,9 @@ from rag_lib.vector_search.glossary_helper import glossary_expand_terms
 from rag_lib.vector_search.llm import expand_query_for_retrieval
 from rag_lib.vector_search.embeddings import embed_query
 
+import logging
+
+logger = logging.getLogger(__name__)
 
 # ============================================================
 # INICIALIZACIÓN DEL CLIENTE DE VECTOR SEARCH
@@ -41,9 +34,20 @@ from rag_lib.vector_search.embeddings import embed_query
 # Se inicializa de forma lazy (al primer uso) para evitar errores
 # si el módulo se importa pero no se usa.
 
+import threading
+
 _vsc: Optional[VectorSearchClient] = None
 _index = None
+_lock = threading.Lock()
 
+def _get_index():
+    global _vsc, _index
+    if _index is None:
+        with _lock:
+            if _index is None:  # Double-check locking
+                _vsc = VectorSearchClient()
+                _index = _vsc.get_index(VS_ENDPOINT, VS_INDEX_FULL_NAME)
+    return _index
 
 def _get_index():
     """
@@ -266,9 +270,15 @@ def retrieve_candidates(query: str, k: int = TOP_K_CANDIDATES) -> List[Dict[str,
                 h["chunk_text_clean"] = strip_chunk_prefix(raw)
 
     except Exception as e:
-        print(f"[retriever] Vector retrieval failed, fallback lexical only. Error: {repr(e)}")
+        logger.warning(
+            "Vector retrieval failed, using lexical fallback",
+            extra={
+                "error": repr(e),
+                "query": query[:100],  # Truncar para logs
+                "error_type": type(e).__name__
+            }
+        )
         hits = []
-        q_fulltext = query
 
     # 2) Always add lexical fallback (FULL_TEXT)
     hits = lexical_fallback(q_fulltext, hits, limit=LEX_FALLBACK_LIMIT)
