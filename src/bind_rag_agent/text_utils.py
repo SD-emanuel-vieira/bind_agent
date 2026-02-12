@@ -6,7 +6,7 @@ import os
 import unicodedata
 from typing import Any, Dict, List, Set, Tuple, Optional
 from collections import defaultdict
-from rag_lib.config import SEGMENTS, SEGMENT_ALIASES
+from bind_rag_agent.config import SEGMENTS, SEGMENT_ALIASES
 
 # ==============================================================================
 # SECCIÓN 1: UTILIDADES DE TEXTO PURO

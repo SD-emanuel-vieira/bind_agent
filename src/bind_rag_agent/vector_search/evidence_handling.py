@@ -4,13 +4,11 @@ import time
 from typing import Any, Dict, List, Optional, Tuple
 import os
 import requests
-from rag_lib.config import *
-from rag_lib.text_utils import *
-
-from rag_lib.vector_search.llm import call_chat
-from rag_lib.vector_search.glossary_helper import glossary_snippet
-from rag_lib.vector_search.business_rules import get_rules_snippet
-
+from bind_rag_agent.config import *
+from bind_rag_agent.text_utils import *
+from bind_rag_agent.vector_search.llm import call_chat
+from bind_rag_agent.vector_search.glossary_helper import glossary_snippet
+from bind_rag_agent.vector_search.business_rules import get_rules_snippet
 
 # -------------------------
 # Build context (with [S#] citations) - MEJORADO
@@ -192,6 +190,11 @@ def answer_from_evidence(query: str, hits: List[Dict[str, Any]], evidence: Dict[
         "- Si topic='Resultados Integrales (YTD julio 2025)' y ves 'Banco Santander | 500',\n"
         "  entonces 500 es el Resultado Integral YTD julio 2025 de Banco Santander.\n"
         "- SIEMPRE interpreta los valores usando el topic como contexto semántico.\n"
+        "REGLA CRÍTICA DE DESAMBIGUACIÓN DE MÉTRICAS:\n"
+        "- 'Resultado neto' SIN calificador = 'Resultado de Gestión Neto AxI'.\n"
+        "- 'Resultado contable neto' o 'resultado neto contable' = 'Resultado Contable Neto AxI'.\n"
+        "- NO confundir estas dos métricas. Son diferentes.\n"
+        "- Consulta las REGLAS DE NEGOCIO inyectadas para la jerarquía completa.\n"
     )
 
     comparative_format = (

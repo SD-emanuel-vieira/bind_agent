@@ -14,12 +14,8 @@ Dependencias:
 
 from difflib import SequenceMatcher
 from typing import Dict, List, Set, Tuple, Any, Optional
-
-from rag_lib.vector_search.business_glossary import BUSINESS_GLOSSARY_V2
-# from rag_lib.vector_search.text_normalization import normalize_text as _norm
-from rag_lib.text_utils import normalize_text as _norm
-
-
+from bind_rag_agent.vector_search.business_glossary import BUSINESS_GLOSSARY_V2
+from bind_rag_agent.text_utils import normalize_text as _norm
 
 # ============================================================
 # BÚSQUEDA EN GLOSARIO

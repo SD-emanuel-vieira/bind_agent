@@ -1,4 +1,4 @@
-from rag_lib.rag_core import *
+from bind_rag_agent.rag_core import *
 
 # -------------------------
 # MLflow PyFunc Model

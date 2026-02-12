@@ -11,6 +11,12 @@ include:
 workspace:
   root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
 
+artifacts:
+  rag_wheel:
+    type: whl
+    path: .
+    # Databricks CLI hace `pip wheel .` automáticamente
+    
 # Variable declarations. These variables are assigned in the dev/prod targets below.
 variables:
   catalog:

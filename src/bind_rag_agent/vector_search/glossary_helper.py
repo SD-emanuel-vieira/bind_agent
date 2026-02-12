@@ -10,7 +10,7 @@ Función principal: prepare_rerank_candidates_glossary_aware()
 
 NOTA: Este archivo mantiene compatibilidad hacia atrás re-exportando
 las funciones públicas. El código existente puede seguir importando:
-    from rag_lib.vector_search.glossary_helper import glossary_snippet
+    from bind_rag_agent.vector_search.glossary_helper import glossary_snippet
 """
 
 import re
@@ -20,12 +20,12 @@ from typing import Any, Dict, List, Set, Optional
 # IMPORTS DE MÓDULOS SEPARADOS
 # ============================================================
 
-from rag_lib.text_utils import (
+from bind_rag_agent.text_utils import (
     normalize_text as _norm,
     normalize_for_search as _norm_for_match,
 )
 
-from rag_lib.vector_search.glossary_lookup import (
+from bind_rag_agent.vector_search.glossary_lookup import (
     glossary_snippet,
     glossary_expand_terms,
     glossary_bonus,
@@ -33,7 +33,7 @@ from rag_lib.vector_search.glossary_lookup import (
     detect_glossary_tokens,
 )
 
-from rag_lib.vector_search.entity_detection import (
+from bind_rag_agent.vector_search.entity_detection import (
     detect_named_entities,
     STOPWORDS_ES as _STOP,
     MONTHS_ES as _MONTHS,

@@ -20,8 +20,8 @@ Estrategias de detección:
 import re
 from typing import List, Set, Tuple
 
-# from rag_lib.vector_search.text_normalization import normalize_text as _norm
-from rag_lib.text_utils import normalize_text as _norm
+# from bind_rag_agent.vector_search.text_normalization import normalize_text as _norm
+from bind_rag_agent.text_utils import normalize_text as _norm
 
 
 # ============================================================

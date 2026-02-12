@@ -14,31 +14,31 @@ Estructura:
 - glossary_helper.py: Orquestador principal
 
 Uso típico:
-    from rag_lib.vector_search.glossary_helper import (
+    from bind_rag_agent.vector_search.glossary_helper import (
         glossary_snippet,
         prepare_rerank_candidates_glossary_aware,
     )
 """
 
 # Re-exportar funciones principales para conveniencia
-from rag_lib.text_utils import (
+from bind_rag_agent.text_utils import (
     normalize_text,
     normalize_for_search,
 )
 
-from rag_lib.vector_search.glossary_lookup import (
+from bind_rag_agent.vector_search.glossary_lookup import (
     glossary_snippet,
     glossary_expand_terms,
     glossary_bonus,
 )
 
-from rag_lib.vector_search.entity_detection import (
+from bind_rag_agent.vector_search.entity_detection import (
     detect_named_entities,
     STOPWORDS_ES,
     MONTHS_ES,
 )
 
-from rag_lib.vector_search.glossary_helper import (
+from bind_rag_agent.vector_search.glossary_helper import (
     prepare_rerank_candidates_glossary_aware,
     extract_query_anchors,
     compute_anchor_score,

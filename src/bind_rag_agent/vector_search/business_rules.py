@@ -68,10 +68,25 @@ BUSINESS_RULES: Dict[str, Dict] = {
         "definicion": "Resultado total de gestión del negocio. Es el Resultado Comercial Nominal Neto AxI más el Ajuste Waiver. Cuando se habla de 'Resultado' a secas, generalmente se refiere a esta métrica.",
         "formula": "Resultado Gestión Neto AxI = Resultado Comercial Neto AxI + Ajuste Waiver",
         "componentes": ["Resultado Comercial Neto AxI", "Ajuste Waiver"],
-        "aliases": ["resultado gestion neto axi", "resultado gestion", "rdo gestion", "resultado de gestion", "resultado", "rdo"],
+        "aliases": ["resultado gestion neto axi", "resultado gestion", "rdo gestion", "resultado de gestion", "resultado gestión","resultado gestion", "resultado", "rdo"],
         "notas": [
             "'Resultado' a secas típicamente se refiere a Resultado Gestión Neto AxI",
+            "'Resultado neto' a secas típicamente se refiere a Resultado Gestión Neto AxI",
             "Es la métrica más completa de rentabilidad del negocio",
+        ]
+    },
+
+    "Resultado Contable Neto AxI": {
+        "definicion": "Resultado contable neto del ajuste por inflación. Es el resultado según normativa contable BCRA.",
+        "formula": "Resultado Contable Neto AxI = Resultado Contable + AxI",
+        "aliases": [
+            "resultado contable neto axi", "resultado contable neto",
+            "resultado neto contable", "resultado contable",
+            "rdo contable neto", "rdo contable"
+        ],
+        "notas": [
+            "Solo referirse a esta métrica si el usuario pide explícitamente 'resultado contable'",
+            "Si se pide 'resultado neto' a secas, usar Resultado Gestión Neto AxI",
         ]
     },
     
@@ -341,7 +356,8 @@ INTERPRETATION_RULES = """
 ## Nota importante sobre signos:
 - Gastos, IIGG y AxI aparecen con signo NEGATIVO en el P&L
 - Por eso las fórmulas son SUMAS (el signo ya está incorporado)
-- "Resultado" a secas = Resultado Gestión Neto AxI
+- "Resultado" o "Resultado neto" a secas = Resultado Gestión Neto AxI
+- "Resultado contable neto" = Resultado Contable Neto AxI
 
 ## Comparaciones temporales:
 - **MoM**: Month over Month (vs mes anterior)
@@ -395,13 +411,25 @@ def get_relevant_rules(query: str, evidence_text: str = "", max_rules: int = 10)
                     matched_names.add(metric_name)
                 break
     
-    # Si se menciona "resultado" a secas, asegurar que se incluya Resultado Gestión Neto AxI
+    # Desambiguación de "resultado neto" y "resultado contable"
     if "resultado" in combined_text and "Resultado Gestión Neto AxI" not in matched_names:
-        # Verificar que no sea parte de otra frase como "resultado operativo"
-        resultado_patterns = ["resultado operativo", "resultado comercial", "resultado total"]
-        is_specific = any(p in combined_text for p in resultado_patterns)
+        resultado_patterns_specific = [
+            "resultado operativo", "resultado total"
+        ]
+        is_specific = any(p in combined_text for p in resultado_patterns_specific)
         
-        if not is_specific:
+        has_contable = "contable" in combined_text
+        has_resultado_neto = "resultado neto" in combined_text
+        
+        if has_contable:
+            # "resultado contable neto" o "resultado neto contable" → Contable Neto AxI
+            if "Resultado Contable Neto AxI" not in matched_names:
+                relevant.insert(0, {
+                    "nombre": "Resultado Contable Neto AxI",
+                    **BUSINESS_RULES["Resultado Contable Neto AxI"]
+                })
+        elif has_resultado_neto or not is_specific:
+            # "resultado neto" a secas o "resultado" a secas → Gestión Neto AxI
             relevant.insert(0, {
                 "nombre": "Resultado Gestión Neto AxI",
                 **BUSINESS_RULES["Resultado Gestión Neto AxI"]

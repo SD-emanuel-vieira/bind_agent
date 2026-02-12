@@ -27,6 +27,8 @@ resources:
 
       tasks:
         - task_key: deploy_rag_agent
+          libraries:
+            - whl: ../dist/*.whl    # o referencia al artifact
           notebook_task:
             notebook_path: ../src/deploy_rag_agent.ipynb
             base_parameters:

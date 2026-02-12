@@ -20,21 +20,21 @@ import re
 from collections import Counter
 from typing import Any, Dict, List, Set
 
-from rag_lib.config import (
+from bind_rag_agent.config import (
     TOP_K_FINAL,
     RERANK_SNIPPET_CHARS,
     TEMPERATURE_RERANK,
     LLM_ENDPOINT,
 )
-from rag_lib.text_utils import safe_json_load, shorten
-from rag_lib.vector_search.llm import call_chat
+from bind_rag_agent.text_utils import safe_json_load, shorten
+from bind_rag_agent.vector_search.llm import call_chat
 
 # ============================================================
 # IMPORTAR FUNCIONES DE ANCHOR DESDE GLOSSARY_HELPER
 # Esto elimina la duplicación y usa la implementación más robusta
 # que incluye detección de entidades nombradas
 # ============================================================
-from rag_lib.vector_search.glossary_helper import (
+from bind_rag_agent.vector_search.glossary_helper import (
     extract_query_anchors,
     compute_anchor_score,
 )

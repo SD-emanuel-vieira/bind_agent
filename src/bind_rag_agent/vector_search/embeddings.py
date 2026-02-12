@@ -4,7 +4,7 @@ from difflib import SequenceMatcher
 from typing import Any, Dict, List, Optional, Tuple
 from mlflow.deployments import get_deploy_client
 
-from rag_lib.config import EMBED_ENDPOINT
+from bind_rag_agent.config import EMBED_ENDPOINT
 # -------------------------
 # CELL 4: Embeddings for query_vector (Model Serving friendly)
 # -------------------------

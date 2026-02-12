@@ -1,6 +1,6 @@
 import re
 from typing import Dict, List, Optional, Any, Tuple
-from rag_lib.sql_search.business_rules_sql import *
+from bind_rag_agent.sql_search.business_rules_sql import *
 
 # =============================================================================
 # FUNCIONES DE DETECCIÓN

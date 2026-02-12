@@ -7,7 +7,7 @@ from typing import List, Dict, Any
 from contextlib import contextmanager
 from pyspark.sql import SparkSession
 import time
-from rag_lib.config import TABLE_, LLM_ENDPOINT_SQL
+from bind_rag_agent.config import TABLE_, LLM_ENDPOINT_SQL
 
 # Obtener la sesión de Spark activa
 spark = SparkSession.builder.getOrCreate()

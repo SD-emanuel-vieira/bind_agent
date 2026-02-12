@@ -1,14 +1,14 @@
 import mlflow.deployments
 from typing import Dict, Any
 
-from rag_lib.config import TOP_K_CANDIDATES, TOP_K_FINAL, MAX_CONTEXT_CHARS
-from rag_lib.text_utils import drop_segment_topics_if_query_general
-from rag_lib.vector_search.retriever import retrieve_candidates
-from rag_lib.vector_search.rerank import tie_break_by_date_in_blocks,enforce_anchor_priority,rerank_with_llm,trace_stage
-from rag_lib.vector_search.glossary_helper import prepare_rerank_candidates_glossary_aware
-from rag_lib.vector_search.evidence_handling import build_context, extract_evidence, answer_from_evidence
-from rag_lib.sql_search.sql_evidence import answer_sql, get_sql_evidence, is_evidence_usable, build_sql_response
-from rag_lib.sql_search.smart_routing import validate_and_route, should_try_sql
+from bind_rag_agent.config import TOP_K_CANDIDATES, TOP_K_FINAL, MAX_CONTEXT_CHARS
+from bind_rag_agent.text_utils import drop_segment_topics_if_query_general
+from bind_rag_agent.vector_search.retriever import retrieve_candidates
+from bind_rag_agent.vector_search.rerank import tie_break_by_date_in_blocks,enforce_anchor_priority,rerank_with_llm,trace_stage
+from bind_rag_agent.vector_search.glossary_helper import prepare_rerank_candidates_glossary_aware
+from bind_rag_agent.vector_search.evidence_handling import build_context, extract_evidence, answer_from_evidence
+from bind_rag_agent.sql_search.sql_evidence import answer_sql, get_sql_evidence, is_evidence_usable, build_sql_response
+from bind_rag_agent.sql_search.smart_routing import validate_and_route, should_try_sql
 
 # print("Config OK")
 # print("VS endpoint:", VS_ENDPOINT)

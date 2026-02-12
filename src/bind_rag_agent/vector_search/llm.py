@@ -5,10 +5,10 @@ from typing import Any, Dict, List, Optional, Tuple
 import os
 import requests
 import mlflow.deployments
-from rag_lib.text_utils import extract_chat_content
-from rag_lib.config import *
 import signal
 from contextlib import contextmanager
+from bind_rag_agent.text_utils import extract_chat_content
+from bind_rag_agent.config import *
 
 class TimeoutError(Exception):
     pass

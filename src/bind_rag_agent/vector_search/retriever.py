@@ -7,7 +7,7 @@ import requests
 from mlflow.utils.databricks_utils import get_databricks_host_creds
 from databricks.vector_search.client import VectorSearchClient
 
-from rag_lib.config import (
+from bind_rag_agent.config import (
     VS_ENDPOINT, 
     VS_INDEX_FULL_NAME, 
     VS_COLUMNS, 
@@ -15,18 +15,73 @@ from rag_lib.config import (
     LEX_FALLBACK_LIMIT,
     CHUNK_TYPE_QUERY_GATES
 )
-from rag_lib.text_utils import (
+from bind_rag_agent.text_utils import (
     parse_vs_similarity_response, 
     strip_chunk_prefix, 
     filter_hits_by_query_gates
 )
-from rag_lib.vector_search.glossary_helper import glossary_expand_terms
-from rag_lib.vector_search.llm import expand_query_for_retrieval
-from rag_lib.vector_search.embeddings import embed_query
+from bind_rag_agent.vector_search.glossary_helper import glossary_expand_terms
+from bind_rag_agent.vector_search.llm import expand_query_for_retrieval
+from bind_rag_agent.vector_search.embeddings import embed_query
 
 import logging
 
 logger = logging.getLogger(__name__)
+
+# ============================================================
+# NORMALIZACIÓN DE QUERIES AMBIGUAS
+# ============================================================
+
+_QUERY_NORMALIZATION_RULES = [
+    {
+        "pattern": r"\bresultado\s+neto\b",
+        "exclude_patterns": [
+            r"\bresultado\s+contable\b",
+            r"\bresultado\s+neto\s+contable\b",
+            r"\bresultado\s+neto\s+comercial\b",
+            r"\bresultado\s+neto\s+operativo\b",
+        ],
+        "replacement": "resultado de gestión neto",
+    },
+    {
+        "pattern": r"\bresultado\s+contable\s+neto\b",
+        "exclude_patterns": [],
+        "replacement": "resultado contable neto AxI",
+    },
+    {
+        "pattern": r"\bresultado\s+neto\s+contable\b",
+        "exclude_patterns": [],
+        "replacement": "resultado contable neto AxI",
+    },
+]
+
+
+def normalize_query_for_retrieval(query: str) -> str:
+    """
+    Aplica reglas de negocio a la query antes del retrieval.
+    Las reglas más específicas van primero para evitar colisiones.
+    """
+    q_normalized = query
+    q_lower = query.lower()
+    
+    for rule in _QUERY_NORMALIZATION_RULES:
+        if not re.search(rule["pattern"], q_lower):
+            continue
+        excluded = any(
+            re.search(exc, q_lower) 
+            for exc in rule.get("exclude_patterns", [])
+        )
+        if excluded:
+            continue
+        q_normalized = re.sub(
+            rule["pattern"], 
+            rule["replacement"], 
+            q_normalized, 
+            flags=re.IGNORECASE
+        )
+        break  # Una sola regla por query para evitar doble reemplazo
+    
+    return q_normalized
 
 # ============================================================
 # INICIALIZACIÓN DEL CLIENTE DE VECTOR SEARCH
@@ -217,7 +272,11 @@ def retrieve_candidates(query: str, k: int = TOP_K_CANDIDATES) -> List[Dict[str,
         Lista de hits (chunks) candidatos, deduplicados por chunk_id
     """
     hits: List[Dict[str, Any]] = []
-    q_fulltext = query  # default por si falla el try
+    # q_fulltext = query  # default por si falla el try
+
+    # Normalizar query ambigua antes del retrieval
+    query_normalized = normalize_query_for_retrieval(query)
+    q_fulltext = query_normalized
 
     # 1) Try vector search (best effort)
     try:
