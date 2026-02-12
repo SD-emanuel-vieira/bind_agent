@@ -31,25 +31,27 @@ BUSINESS_RULES: Dict[str, Dict] = {
     # 5. "Resultado" a secas = Resultado Gestión Neto AxI
     
     "Resultado Operativo": {
-        "definicion": "Resultado de las operaciones del negocio antes de impuestos y ajustes. Es la suma de Ingresos y Gastos en el P&L (los gastos ya vienen con signo negativo).",
+        "definicion": "Resultado de las operaciones del negocio antes de impuestos y ajustes. Es el resultado antes de impuestos. Es la suma de Ingresos y Gastos en el P&L (los gastos ya vienen con signo negativo).",
         "formula": "Resultado Operativo = Ingresos + Gastos",
         "componentes": ["Ingresos", "Gastos"],
         "aliases": ["resultado operativo", "rdo operativo", "operating result", "utilidad operativa"],
         "notas": [
             "En el P&L los Gastos aparecen con signo negativo, por eso la fórmula es una suma",
+            "Es el resultado antes de impuestos",
             "No incluye impuesto a las ganancias (IIGG)",
             "No incluye ajustes por inflación (AxI)",
         ]
     },
     
     "Resultado Comercial Nominal": {
-        "definicion": "Resultado operativo más el impuesto a las ganancias. Es el resultado antes de ajuste por inflación.",
+        "definicion": "Resultado operativo más el impuesto a las ganancias. Es el resultado despúes de impuestos. Es el resultado antes de ajuste por inflación.",
         "formula": "Resultado Comercial Nominal = Resultado Operativo + IIGG",
         "componentes": ["Resultado Operativo", "IIGG"],
         "aliases": ["resultado comercial nominal", "resultado comercial", "rdo comercial nominal", "nominal commercial result"],
         "notas": [
             "IIGG viene con signo negativo en el P&L, por eso se suma",
             "Este resultado aún no está ajustado por inflación",
+            "Es el resultado después de impuestos"
         ]
     },
     
@@ -185,7 +187,7 @@ BUSINESS_RULES: Dict[str, Dict] = {
     # ==================== AJUSTES Y OTROS ====================
     
     "IIGG": {
-        "definicion": "Impuesto a las Ganancias. Carga fiscal sobre el resultado. Aparece con signo negativo en el P&L.",
+        "definicion": "Impuesto a las Ganancias. Carga fiscal sobre el resultado. Aparece con signo negativo en el P&L. No representa los dividendos",
         "aliases": ["iigg", "impuesto a las ganancias", "income tax", "impuesto"],
         "notas": [
             "Viene con signo NEGATIVO en el P&L",
