@@ -13,6 +13,8 @@ las funciones públicas. El código existente puede seguir importando:
     from bind_rag_agent.vector_search.glossary_helper import glossary_snippet
 """
 
+import ast
+import json
 import re
 from typing import Any, Dict, List, Set, Optional
 
@@ -214,19 +216,244 @@ def compute_anchor_score(hit: Dict[str, Any], anchors: List[str]) -> int:
 # ============================================================
 
 def _parse_metadata_enrich(hit: Dict[str, Any]) -> Dict[str, Any]:
-    """Parsea metadata_enrich de un hit (puede ser JSON string o dict)."""
-    raw = hit.get("metadata_enrich")
-    if not raw:
-        return {}
-    if isinstance(raw, dict):
-        return raw
-    if isinstance(raw, str):
-        try:
-            import json
-            return json.loads(raw)
-        except (json.JSONDecodeError, ValueError):
+    """
+    Parsea metadata_enrich de un hit.
+    
+    Soporta formatos frecuentes de Vector Search:
+    - dict nativo
+    - JSON string
+    - string con representación Python (single quotes)
+    - bytes
+    - objetos con asDict() (ej. Row)
+    """
+    def _is_non_empty(v: Any) -> bool:
+        if v is None:
+            return False
+        if isinstance(v, str):
+            s = v.strip().lower()
+            return s not in {"", "null", "none", "{}", "[]"}
+        if isinstance(v, (list, tuple, set, dict)):
+            return len(v) > 0
+        if isinstance(v, (bytes, bytearray)):
+            return len(v) > 0
+        return True
+    
+    def _pick(keys: List[str]) -> Any:
+        for key in keys:
+            if key in hit:
+                val = hit.get(key)
+                if _is_non_empty(val):
+                    return val
+        return None
+    
+    def _metadata_from_flat_fields() -> Dict[str, Any]:
+        extracted: Dict[str, Any] = {}
+        
+        field_candidates = {
+            "table_metrics": [
+                "table_metrics",
+                "metadata_enrich.table_metrics",
+                "metadata_enrich_table_metrics",
+                "metadata_table_metrics",
+                "metadata.table_metrics",
+                "tableMetrics",
+                "metrics",
+            ],
+            "keywords": [
+                "keywords",
+                "metadata_enrich.keywords",
+                "metadata_enrich_keywords",
+                "metadata_keywords",
+                "metadata.keywords",
+            ],
+            "entities": [
+                "entities",
+                "metadata_enrich.entities",
+                "metadata_enrich_entities",
+                "metadata_entities",
+                "metadata.entities",
+            ],
+            "data_period": [
+                "data_period",
+                "metadata_enrich.data_period",
+                "metadata_enrich_data_period",
+                "metadata_data_period",
+                "period",
+                "anio",
+                "year",
+            ],
+            "content_category": [
+                "content_category",
+                "metadata_enrich.content_category",
+                "metadata_enrich_content_category",
+                "metadata_content_category",
+                "category",
+            ],
+        }
+        
+        for target_key, candidates in field_candidates.items():
+            val = _pick(candidates)
+            if _is_non_empty(val):
+                extracted[target_key] = val
+        
+        return extracted
+    
+    raw = None
+    for raw_key in (
+        "metadata_enrich",
+        "metadata_enrich_json",
+        "metadata_json",
+        "metadata",
+        "metadata_enriched",
+    ):
+        if raw_key in hit:
+            candidate = hit.get(raw_key)
+            if _is_non_empty(candidate):
+                raw = candidate
+                break
+    
+    if raw is None:
+        raw = _metadata_from_flat_fields()
+        if not raw:
             return {}
-    return {}
+    
+    if hasattr(raw, "asDict"):
+        try:
+            raw = raw.asDict(recursive=True)
+        except Exception:
+            pass
+    
+    if isinstance(raw, (bytes, bytearray)):
+        try:
+            raw = raw.decode("utf-8", errors="ignore")
+        except Exception:
+            return {}
+    
+    if isinstance(raw, dict):
+        # Completar con posibles columnas flat si faltan campos
+        flat_meta = _metadata_from_flat_fields()
+        if flat_meta:
+            merged = dict(raw)
+            for k, v in flat_meta.items():
+                if not _is_non_empty(merged.get(k)):
+                    merged[k] = v
+            return merged
+        return raw
+    
+    if isinstance(raw, str):
+        s = raw.strip()
+        if not s:
+            return {}
+        
+        # Intentar JSON (incluye caso doble-serializado)
+        for _ in range(2):
+            try:
+                parsed = json.loads(s)
+            except (json.JSONDecodeError, TypeError, ValueError):
+                break
+            
+            if isinstance(parsed, dict):
+                flat_meta = _metadata_from_flat_fields()
+                if flat_meta:
+                    merged = dict(parsed)
+                    for k, v in flat_meta.items():
+                        if not _is_non_empty(merged.get(k)):
+                            merged[k] = v
+                    return merged
+                return parsed
+            if isinstance(parsed, str):
+                s = parsed.strip()
+                continue
+            break
+        
+        # Fallback: representación Python de dict/lista
+        try:
+            parsed = ast.literal_eval(s)
+        except (SyntaxError, ValueError):
+            return _metadata_from_flat_fields() or {}
+        
+        if hasattr(parsed, "asDict"):
+            try:
+                parsed = parsed.asDict(recursive=True)
+            except Exception:
+                pass
+        
+        if isinstance(parsed, dict):
+            flat_meta = _metadata_from_flat_fields()
+            if flat_meta:
+                merged = dict(parsed)
+                for k, v in flat_meta.items():
+                    if not _is_non_empty(merged.get(k)):
+                        merged[k] = v
+                return merged
+            return parsed
+        return _metadata_from_flat_fields() or {}
+    
+    return _metadata_from_flat_fields() or {}
+
+
+def _metadata_field_to_list(value: Any) -> List[str]:
+    """Normaliza un campo metadata (list/string/dict) a lista de strings."""
+    if value is None:
+        return []
+    
+    if hasattr(value, "asDict"):
+        try:
+            value = value.asDict(recursive=True)
+        except Exception:
+            pass
+    
+    if isinstance(value, (bytes, bytearray)):
+        try:
+            value = value.decode("utf-8", errors="ignore")
+        except Exception:
+            return []
+    
+    if isinstance(value, str):
+        s = value.strip()
+        if not s:
+            return []
+        
+        parsed = None
+        for parser in (json.loads, ast.literal_eval):
+            try:
+                candidate = parser(s)
+                if isinstance(candidate, (list, tuple, set, dict)):
+                    parsed = candidate
+                    break
+            except Exception:
+                continue
+        
+        if parsed is not None:
+            value = parsed
+        else:
+            return [s]
+    
+    if isinstance(value, dict):
+        value = list(value.values())
+    
+    if isinstance(value, (list, tuple, set)):
+        out: List[str] = []
+        for item in value:
+            if item is None:
+                continue
+            if hasattr(item, "asDict"):
+                try:
+                    item = item.asDict(recursive=True)
+                except Exception:
+                    pass
+            if isinstance(item, dict):
+                if "name" in item and item["name"] is not None:
+                    out.append(str(item["name"]))
+                elif "value" in item and item["value"] is not None:
+                    out.append(str(item["value"]))
+                else:
+                    out.extend(str(v) for v in item.values() if v is not None)
+            else:
+                out.append(str(item))
+        return out
+    
+    return [str(value)]
 
 
 def compute_metadata_bonus(hit: Dict[str, Any], anchors: List[str]) -> int:
@@ -239,6 +466,8 @@ def compute_metadata_bonus(hit: Dict[str, Any], anchors: List[str]) -> int:
     - Anchor es substring de table_metrics:     +2 (match parcial, ej: "previsiones" en "Previsiones & Otros")
     - Anchor matchea en keywords:               +1
     - Anchor matchea en entities:               +2
+    - Anchor matchea en data_period:            +2
+    - Anchor matchea en content_category:       +1
     
     Args:
         hit: Diccionario con campo metadata_enrich
@@ -251,9 +480,11 @@ def compute_metadata_bonus(hit: Dict[str, Any], anchors: List[str]) -> int:
     if not meta or not anchors:
         return 0
     
-    table_metrics = [_norm(m) for m in (meta.get("table_metrics") or []) if m]
-    keywords = [_norm(k) for k in (meta.get("keywords") or []) if k]
-    entities = [_norm(e) for e in (meta.get("entities") or []) if e]
+    table_metrics = [_norm(m) for m in _metadata_field_to_list(meta.get("table_metrics")) if m]
+    keywords = [_norm(k) for k in _metadata_field_to_list(meta.get("keywords")) if k]
+    entities = [_norm(e) for e in _metadata_field_to_list(meta.get("entities")) if e]
+    data_period = _norm(str(meta.get("data_period") or ""))
+    content_category = _norm(str(meta.get("content_category") or ""))
     
     score = 0
     
@@ -282,6 +513,16 @@ def compute_metadata_bonus(hit: Dict[str, Any], anchors: List[str]) -> int:
             if anchor_n == ent or anchor_n in ent or ent in anchor_n:
                 score += 2
                 break
+        
+        # data_period: match exacto o substring (+2)
+        if data_period and (anchor_n == data_period or anchor_n in data_period or data_period in anchor_n):
+            score += 2
+        
+        # content_category: match exacto o substring (+1)
+        if content_category and (
+            anchor_n == content_category or anchor_n in content_category or content_category in anchor_n
+        ):
+            score += 1
     
     return score
 

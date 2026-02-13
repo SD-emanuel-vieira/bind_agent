@@ -296,11 +296,43 @@ def rerank_with_llm(
 # ============================================================
 
 DEBUG_TRACE = os.getenv("RAG_DEBUG_TRACE", "0") == "1"
+DEBUG_TRACE_METADATA = os.getenv("RAG_DEBUG_TRACE_METADATA", "0") == "1"
 
 
 def _short_id(cid: str, n: int = 10) -> str:
     """Trunca un chunk_id para display."""
     return (cid or "")[:n]
+
+
+def _summarize_metadata_raw(value: Any) -> str:
+    """Resumen corto del contenido de metadata_enrich para debug."""
+    if value is None:
+        return "none"
+    if isinstance(value, dict):
+        keys = list(value.keys())[:4]
+        return f"dict(keys={keys})"
+    if isinstance(value, (list, tuple, set)):
+        return f"{type(value).__name__}(len={len(value)})"
+    if isinstance(value, (bytes, bytearray)):
+        return f"{type(value).__name__}(len={len(value)})"
+    if isinstance(value, str):
+        s = value.strip().replace("\n", " ")
+        return f"str(len={len(s)}): {shorten(s, 80)}"
+    return type(value).__name__
+
+
+def _has_non_empty_metadata(value: Any) -> bool:
+    """True si metadata_enrich parece no vacío."""
+    if value is None:
+        return False
+    if isinstance(value, str):
+        s = value.strip().lower()
+        return s not in {"", "null", "none", "{}", "[]"}
+    if isinstance(value, (list, tuple, set, dict)):
+        return len(value) > 0
+    if isinstance(value, (bytes, bytearray)):
+        return len(value) > 0
+    return True
 
 
 def trace_stage(
@@ -337,6 +369,13 @@ def trace_stage(
     ] if anchors else [0] * total
     
     n_anchor_pos = sum(1 for s in anchor_scores if s > 0)
+    metadata_nonempty = sum(
+        1 for h in hits if _has_non_empty_metadata(h.get("metadata_enrich"))
+    )
+    metadata_scores = [
+        compute_metadata_bonus(h, anchors) for h in hits
+    ] if anchors else [0] * total
+    n_metadata_pos = sum(1 for s in metadata_scores if s > 0)
 
     # Contar chunk_types
     ctype_counts = Counter((h.get("chunk_type") or "NA") for h in hits)
@@ -347,6 +386,7 @@ def trace_stage(
     print(
         f"[TRACE] {stage} | total={total} | "
         f"anchors={anchors} | anchor_hits>0={n_anchor_pos} | "
+        f"metadata_nonempty={metadata_nonempty} | metadata_hits>0={n_metadata_pos} | "
         f"chunk_type={top_ctypes}"
     )
 
@@ -368,6 +408,7 @@ def trace_stage(
         ct = h.get("chunk_type") or ""
         gb = h.get("_glossary_bonus", "?")
         mb = h.get("_metadata_bonus", "?")
+        m_calc = metadata_scores[i] if i < len(metadata_scores) else 0
         cid = _short_id(h.get("chunk_id"))
         
         path = h.get("path") or ""
@@ -375,5 +416,13 @@ def trace_stage(
 
         print(
             f"  {i+1:02d}) a_calc={a_calculated} | a_stored={a_stored} | "
-            f"g_bonus={gb} | m_bonus={mb} | {fd} | p={pg} | {ct} | {tail} | cid={cid}"
+            f"g_bonus={gb} | m_bonus={mb} | m_calc={m_calc} | "
+            f"{fd} | p={pg} | {ct} | {tail} | cid={cid}"
         )
+
+        if DEBUG_TRACE_METADATA:
+            meta_raw = h.get("metadata_enrich")
+            meta_summary = _summarize_metadata_raw(meta_raw)
+            print(
+                f"      m_calc={m_calc} | metadata_enrich={meta_summary}"
+            )

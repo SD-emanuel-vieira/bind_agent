@@ -123,7 +123,21 @@ def parse_vs_similarity_response(res: Any) -> List[Dict[str, Any]]:
         if cols and data:
             out = []
             for row in data:
-                out.append({cols[i]: row[i] for i in range(min(len(cols), len(row)))})
+                n = min(len(cols), len(row))
+                d = {}
+                for i in range(n):
+                    col_raw = cols[i]
+                    d[col_raw] = row[i]
+                    
+                    # Alias canónico: strip + lowercase (si difiere del original)
+                    if isinstance(col_raw, str):
+                        col_norm = col_raw.strip()
+                        if col_norm and col_norm != col_raw and col_norm not in d:
+                            d[col_norm] = row[i]
+                        col_lower = col_norm.lower()
+                        if col_lower and col_lower not in d:
+                            d[col_lower] = row[i]
+                out.append(d)
             return out
     
     if isinstance(res, list):
