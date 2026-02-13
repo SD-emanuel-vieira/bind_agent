@@ -37,6 +37,7 @@ from bind_rag_agent.vector_search.llm import call_chat
 from bind_rag_agent.vector_search.glossary_helper import (
     extract_query_anchors,
     compute_anchor_score,
+    compute_metadata_bonus,
 )
 
 
@@ -366,6 +367,7 @@ def trace_stage(
         pg = h.get("page_num")
         ct = h.get("chunk_type") or ""
         gb = h.get("_glossary_bonus", "?")
+        mb = h.get("_metadata_bonus", "?")
         cid = _short_id(h.get("chunk_id"))
         
         path = h.get("path") or ""
@@ -373,5 +375,5 @@ def trace_stage(
 
         print(
             f"  {i+1:02d}) a_calc={a_calculated} | a_stored={a_stored} | "
-            f"g_bonus={gb} | {fd} | p={pg} | {ct} | {tail} | cid={cid}"
+            f"g_bonus={gb} | m_bonus={mb} | {fd} | p={pg} | {ct} | {tail} | cid={cid}"
         )

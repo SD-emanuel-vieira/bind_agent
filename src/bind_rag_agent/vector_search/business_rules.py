@@ -70,7 +70,7 @@ BUSINESS_RULES: Dict[str, Dict] = {
         "definicion": "Resultado total de gestión del negocio. Es el Resultado Comercial Nominal Neto AxI más el Ajuste Waiver. Cuando se habla de 'Resultado' a secas, generalmente se refiere a esta métrica.",
         "formula": "Resultado Gestión Neto AxI = Resultado Comercial Neto AxI + Ajuste Waiver",
         "componentes": ["Resultado Comercial Neto AxI", "Ajuste Waiver"],
-        "aliases": ["resultado gestion neto axi", "resultado gestion", "rdo gestion", "resultado de gestion", "resultado gestión","resultado gestion", "resultado", "rdo"],
+        "aliases": ["resultado gestion neto axi", "resultado gestion", "rdo gestion", "resultado de gestion", "resultado gestión","resultado gestion", "resultado", "rdo", "Rdo. Comercial Gestión Neto AxI"],
         "notas": [
             "'Resultado' a secas típicamente se refiere a Resultado Gestión Neto AxI",
             "'Resultado neto' a secas típicamente se refiere a Resultado Gestión Neto AxI",

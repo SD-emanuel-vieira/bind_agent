@@ -1,6 +1,7 @@
 import re
 import json
 import time
+from datetime import datetime, date
 from typing import Any, Dict, List, Optional, Tuple
 import os
 import requests
@@ -20,13 +21,14 @@ from bind_rag_agent.text_utils import (
     strip_chunk_prefix, 
     filter_hits_by_query_gates
 )
-from bind_rag_agent.vector_search.glossary_helper import glossary_expand_terms
+from bind_rag_agent.vector_search.glossary_helper import glossary_expand_terms, extract_query_anchors
 from bind_rag_agent.vector_search.llm import expand_query_for_retrieval
 from bind_rag_agent.vector_search.embeddings import embed_query
 
 import logging
 
 logger = logging.getLogger(__name__)
+
 
 # ============================================================
 # NORMALIZACIÓN DE QUERIES AMBIGUAS
@@ -36,31 +38,18 @@ _QUERY_NORMALIZATION_RULES = [
     {
         "pattern": r"\bresultado\s+neto\b",
         "exclude_patterns": [
-            r"\bresultado\s+contable\b",
             r"\bresultado\s+neto\s+contable\b",
             r"\bresultado\s+neto\s+comercial\b",
+            r"\bresultado\s+neto\s+ajustado\b",
             r"\bresultado\s+neto\s+operativo\b",
         ],
         "replacement": "resultado de gestión neto",
-    },
-    {
-        "pattern": r"\bresultado\s+contable\s+neto\b",
-        "exclude_patterns": [],
-        "replacement": "resultado contable neto AxI",
-    },
-    {
-        "pattern": r"\bresultado\s+neto\s+contable\b",
-        "exclude_patterns": [],
-        "replacement": "resultado contable neto AxI",
+        "note": "En BIND, 'resultado neto' a secas = Resultado Gestión Neto AxI",
     },
 ]
 
 
 def normalize_query_for_retrieval(query: str) -> str:
-    """
-    Aplica reglas de negocio a la query antes del retrieval.
-    Las reglas más específicas van primero para evitar colisiones.
-    """
     q_normalized = query
     q_lower = query.lower()
     
@@ -79,30 +68,84 @@ def normalize_query_for_retrieval(query: str) -> str:
             q_normalized, 
             flags=re.IGNORECASE
         )
-        break  # Una sola regla por query para evitar doble reemplazo
+        logger.info(f"[retriever] Query normalizada: '{query}' → '{q_normalized}' ({rule['note']})")
     
     return q_normalized
+
+
+# ============================================================
+# EXTRACCIÓN DE FECHA DE LA QUERY
+# ============================================================
+
+_MONTHS_MAP = {
+    "enero": 1, "febrero": 2, "marzo": 3, "abril": 4,
+    "mayo": 5, "junio": 6, "julio": 7, "agosto": 8,
+    "septiembre": 9, "octubre": 10, "noviembre": 11, "diciembre": 12,
+}
+
+
+def extract_date_from_query(query: str) -> Optional[Dict[str, Any]]:
+    """
+    Extrae mes y año de la query del usuario.
+    
+    Returns:
+        {"month": 10, "year": 2025, "date_from": "2025-10-01"} o None
+    
+    Lógica: si el usuario pregunta por "octubre 2025", el archivo que contiene
+    esos datos fue creado en octubre o noviembre 2025. Filtramos file_date
+    desde el primer día de ese mes en adelante.
+    """
+    q_lower = (query or "").lower()
+    
+    # Patrón 1: nombre de mes + año ("octubre 2025", "octubre de 2025")
+    pattern = r"\b(" + "|".join(_MONTHS_MAP.keys()) + r")\s+(?:de\s+)?(\d{4})\b"
+    match = re.search(pattern, q_lower)
+    if match:
+        month_name, year_str = match.group(1), match.group(2)
+        month = _MONTHS_MAP[month_name]
+        year = int(year_str)
+        date_from = f"{year}-{month:02d}-01"
+        logger.info(f"[retriever] Fecha detectada: {month_name} {year} → file_date >= {date_from}")
+        return {"month": month, "year": year, "date_from": date_from}
+    
+    # Patrón 2: MM/YYYY o MM-YYYY
+    match = re.search(r"\b(\d{1,2})[/\-](\d{4})\b", q_lower)
+    if match:
+        month = int(match.group(1))
+        year = int(match.group(2))
+        if 1 <= month <= 12 and 2020 <= year <= 2030:
+            date_from = f"{year}-{month:02d}-01"
+            logger.info(f"[retriever] Fecha detectada: {month}/{year} → file_date >= {date_from}")
+            return {"month": month, "year": year, "date_from": date_from}
+    
+    # Patrón 3: solo nombre de mes (sin año) → asumir año actual
+    for month_name, month_num in _MONTHS_MAP.items():
+        if re.search(rf"\b{month_name}\b", q_lower):
+            year = datetime.now().year
+            date_from = f"{year}-{month_num:02d}-01"
+            logger.info(f"[retriever] Fecha detectada (sin año): {month_name} → asumiendo {year}, file_date >= {date_from}")
+            return {"month": month_num, "year": year, "date_from": date_from}
+    
+    return None
+
+
+def build_date_filter(date_info: Dict[str, Any]) -> Dict[str, str]:
+    """
+    Construye filtro de fecha para Databricks Vector Search.
+    file_date >= primer día del mes preguntado, sin límite superior.
+    """
+    return {"file_date >=": date_info["date_from"]}
+
 
 # ============================================================
 # INICIALIZACIÓN DEL CLIENTE DE VECTOR SEARCH
 # ============================================================
-# Se inicializa de forma lazy (al primer uso) para evitar errores
-# si el módulo se importa pero no se usa.
 
 import threading
 
 _vsc: Optional[VectorSearchClient] = None
 _index = None
 _lock = threading.Lock()
-
-def _get_index():
-    global _vsc, _index
-    if _index is None:
-        with _lock:
-            if _index is None:  # Double-check locking
-                _vsc = VectorSearchClient()
-                _index = _vsc.get_index(VS_ENDPOINT, VS_INDEX_FULL_NAME)
-    return _index
 
 def _get_index():
     """
@@ -123,17 +166,10 @@ def _get_index():
 # AUTENTICACIÓN DATABRICKS (para FULL_TEXT queries)
 # ============================================================
 def _get_dbx_auth() -> Tuple[str, str]:
-    """Get Databricks host + token.
-
-    Priority:
-      1) Env vars: DATABRICKS_HOST/WORKSPACE_URL + DATABRICKS_TOKEN/TOKEN
-      2) MLflow Databricks creds (works in Databricks notebooks)
-      3) Notebook context token (best-effort)
-    """
+    """Get Databricks host + token."""
     host = (os.getenv("DATABRICKS_HOST") or os.getenv("WORKSPACE_URL") or "").rstrip("/")
     token = os.getenv("DATABRICKS_TOKEN") or os.getenv("TOKEN") or ""
 
-    # 2) MLflow helper (usually works in Databricks notebooks)
     if not host or not token:
         try:
             creds = get_databricks_host_creds()
@@ -142,7 +178,6 @@ def _get_dbx_auth() -> Tuple[str, str]:
         except Exception:
             pass
 
-    # 3) Notebook context fallback (best-effort)
     if not host or not token:
         try:
             from pyspark.sql import SparkSession
@@ -150,7 +185,6 @@ def _get_dbx_auth() -> Tuple[str, str]:
             if not host:
                 host = ("https://" + spark.conf.get("spark.databricks.workspaceUrl")).rstrip("/")
             if not token:
-                # dbutils available in notebooks
                 token = dbutils.notebook.entry_point.getDbutils().notebook().getContext().apiToken().get()
         except Exception:
             pass
@@ -212,7 +246,8 @@ def _vs_full_text_query(
 def lexical_fallback(
     query: str, 
     hits: List[Dict[str, Any]], 
-    limit: int = LEX_FALLBACK_LIMIT
+    limit: int = LEX_FALLBACK_LIMIT,
+    filters: Optional[Dict[str, str]] = None,
 ) -> List[Dict[str, Any]]:
     """
     Best-effort: agrega matches lexicográficos desde Vector Search index (FULL_TEXT).
@@ -228,7 +263,7 @@ def lexical_fallback(
             query_text=q,
             columns=VS_COLUMNS,
             num_results=limit,
-            filters=None,
+            filters=filters,
         )
     except Exception as e:
         print(f"[retriever] Lexical FULL_TEXT fallback failed: {repr(e)}")
@@ -240,7 +275,6 @@ def lexical_fallback(
         d["chunk_text_clean"] = strip_chunk_prefix(raw)
         lex_hits.append(d)
 
-    # merge + dedupe por chunk_id (primero mantiene orden de hits existentes)
     merged: List[Dict[str, Any]] = []
     seen = set()
     for h in hits + lex_hits:
@@ -255,97 +289,195 @@ def lexical_fallback(
 
 
 # ============================================================
+# MERGE + DEDUP HELPER
+# ============================================================
+def _merge_and_dedup(
+    primary: List[Dict[str, Any]], 
+    secondary: List[Dict[str, Any]]
+) -> List[Dict[str, Any]]:
+    """
+    Merge dos listas de hits priorizando primary. Dedup por chunk_id.
+    """
+    merged = []
+    seen = set()
+    for h in primary + secondary:
+        cid = h.get("chunk_id")
+        if cid and cid not in seen:
+            merged.append(h)
+            seen.add(cid)
+    return merged
+
+
+# ============================================================
 # FUNCIÓN PRINCIPAL: retrieve_candidates
 # ============================================================
 def retrieve_candidates(query: str, k: int = TOP_K_CANDIDATES) -> List[Dict[str, Any]]:
     """
-    Recupera candidatos usando:
-    1. Vector Search (similitud semántica con embeddings)
-    2. Lexical fallback (FULL_TEXT para términos exactos)
-    3. Filtrado por query gates (ej: excluir gráficos si no aplica)
+    Recupera candidatos usando retrieval en dos pasadas:
     
-    Args:
-        query: Pregunta del usuario
-        k: Número máximo de candidatos a recuperar
-        
-    Returns:
-        Lista de hits (chunks) candidatos, deduplicados por chunk_id
+    Pasada 1 (CON filtro temporal): Si la query menciona una fecha,
+    filtra vector search y lexical fallback por file_date >= mes preguntado.
+    Esto prioriza documentos del período correcto.
+    
+    Pasada 2 (SIN filtro): Retrieval normal sin restricción de fecha.
+    Captura evidencia que el filtro temporal pueda haber excluido.
+    
+    Los resultados se mergean priorizando la pasada filtrada.
     """
-    hits: List[Dict[str, Any]] = []
-    # q_fulltext = query  # default por si falla el try
-
-    # Normalizar query ambigua antes del retrieval
+    # 0) Normalizar query ambigua
     query_normalized = normalize_query_for_retrieval(query)
+    
+    # 1) Detectar fecha en la query → construir filtro
+    date_info = extract_date_from_query(query)
+    date_filter = build_date_filter(date_info) if date_info else None
+    
+    if date_filter:
+        logger.info(f"[retriever] Filtro temporal: {date_filter}")
+    
+    # 2) Preparar query expandida (se usa en ambas pasadas)
     q_fulltext = query_normalized
-
-    # 1) Try vector search (best effort)
+    qvec = None
+    
     try:
-        # Expandir query con glosario
-        gl = glossary_expand_terms(query)
+        gl = glossary_expand_terms(query_normalized)
         terms = gl.get("terms", []) or []
         acronyms = gl.get("acronyms", []) or []
 
-        # Expandir query con LLM
-        q_llm = expand_query_for_retrieval(query) or query
+        q_llm = expand_query_for_retrieval(query_normalized) or query_normalized
 
-        # Query para embeddings/vector: más rica (mejor semántica)
         q_embed = q_llm
         if terms:
             q_embed = q_embed + "\n\nGLOSSARY TERMS: " + " | ".join(terms)
 
-        # Helper de quoting para FULL_TEXT
         def _qt(t: str) -> str:
             t = (t or "").strip()
             return f'"{t}"' if " " in t else t
 
-        # FULL_TEXT "glossary-focused" si hay acrónimos relevantes
         focus_acronyms = [a.strip() for a in acronyms if isinstance(a, str) and len(a.strip()) >= 2]
 
         if focus_acronyms:
-            q_fulltext = " ".join(_qt(a) for a in focus_acronyms)
+            # IMPORTANTE: no perder los términos originales de la query.
+            # Los acrónimos se AGREGAN, no reemplazan.
+            q_fulltext = query_normalized + " " + " ".join(_qt(a) for a in focus_acronyms)
         else:
-            q_fulltext = query
+            q_fulltext = query_normalized
             if terms:
                 q_fulltext = q_fulltext + " " + " ".join(_qt(t) for t in terms)
 
-        # Generar embedding
         qvec = embed_query(q_embed)
-
-        if qvec:
-            # ============================================================
-            # CLAVE: Obtener el índice de forma lazy
-            # ============================================================
-            index = _get_index()
-            
-            res = index.similarity_search(
-                query_vector=qvec,
-                columns=VS_COLUMNS,
-                num_results=k
-            )
-            hits = parse_vs_similarity_response(res)
-
-            for h in hits:
-                raw = (h.get("chunk_text") or "").strip()
-                h["chunk_text_clean"] = strip_chunk_prefix(raw)
 
     except Exception as e:
         logger.warning(
-            "Vector retrieval failed, using lexical fallback",
-            extra={
-                "error": repr(e),
-                "query": query[:100],  # Truncar para logs
-                "error_type": type(e).__name__
-            }
+            "Query expansion failed",
+            extra={"error": repr(e), "query": query[:100]}
         )
-        hits = []
+    
+    # ================================================================
+    # PASADA 1: CON filtro temporal (solo si hay fecha detectada)
+    # ================================================================
+    hits_filtered: List[Dict[str, Any]] = []
+    
+    if date_filter and qvec:
+        try:
+            index = _get_index()
+            res = index.similarity_search(
+                query_vector=qvec,
+                columns=VS_COLUMNS,
+                num_results=k,
+                filters=date_filter,
+            )
+            hits_filtered = parse_vs_similarity_response(res)
 
-    # 2) Always add lexical fallback (FULL_TEXT)
-    hits = lexical_fallback(q_fulltext, hits, limit=LEX_FALLBACK_LIMIT)
+            for h in hits_filtered:
+                raw = (h.get("chunk_text") or "").strip()
+                h["chunk_text_clean"] = strip_chunk_prefix(raw)
+            
+            logger.info(f"[retriever] Pasada 1 (filtrada): {len(hits_filtered)} hits")
 
-    # 2.1) Exclude evidence that would be chart analysis (si no tiene keywords)
+        except Exception as e:
+            logger.warning(f"[retriever] Pasada filtrada falló: {repr(e)}")
+            hits_filtered = []
+        
+        # Lexical fallback CON filtro
+        hits_filtered = lexical_fallback(
+            q_fulltext, hits_filtered, limit=LEX_FALLBACK_LIMIT, filters=date_filter
+        )
+
+    # ================================================================
+    # PASADA 2: SIN filtro (siempre se ejecuta)
+    # ================================================================
+    hits_unfiltered: List[Dict[str, Any]] = []
+    
+    if qvec:
+        try:
+            index = _get_index()
+            res = index.similarity_search(
+                query_vector=qvec,
+                columns=VS_COLUMNS,
+                num_results=k,
+            )
+            hits_unfiltered = parse_vs_similarity_response(res)
+
+            for h in hits_unfiltered:
+                raw = (h.get("chunk_text") or "").strip()
+                h["chunk_text_clean"] = strip_chunk_prefix(raw)
+
+        except Exception as e:
+            logger.warning(
+                "Vector retrieval failed, using lexical fallback",
+                extra={"error": repr(e), "query": query[:100]}
+            )
+            hits_unfiltered = []
+    
+    # Lexical fallback SIN filtro
+    hits_unfiltered = lexical_fallback(q_fulltext, hits_unfiltered, limit=LEX_FALLBACK_LIMIT)
+
+    # ================================================================
+    # PASADA 3: Búsqueda léxica focalizada por ANCHORS
+    # Red de seguridad: busca con solo los términos clave de la query,
+    # sin ruido de stopwords ni expansiones. Esto captura chunks donde
+    # el término literal (ej: "previsiones") aparece en el texto pero
+    # no tiene suficiente similitud semántica para estar en el top-K.
+    # ================================================================
+    hits_anchor: List[Dict[str, Any]] = []
+    
+    try:
+        anchors = extract_query_anchors(query_normalized)
+        if anchors:
+            q_anchors = " ".join(anchors)
+            logger.info(f"[retriever] Anchor search: '{q_anchors}'")
+            
+            # Con filtro temporal si existe
+            if date_filter:
+                hits_anchor = lexical_fallback(
+                    q_anchors, hits_anchor, limit=LEX_FALLBACK_LIMIT, filters=date_filter
+                )
+            
+            # Sin filtro (complementario)
+            hits_anchor = lexical_fallback(
+                q_anchors, hits_anchor, limit=LEX_FALLBACK_LIMIT
+            )
+    except Exception as e:
+        logger.warning(f"[retriever] Anchor search failed: {repr(e)}")
+
+    # ================================================================
+    # MERGE: filtrada (prioridad) + sin filtro + anchors (complemento)
+    # ================================================================
+    if hits_filtered:
+        hits = _merge_and_dedup(hits_filtered, hits_unfiltered)
+        hits = _merge_and_dedup(hits, hits_anchor)
+        logger.info(
+            f"[retriever] Merge: {len(hits_filtered)} filtrados + "
+            f"{len(hits_unfiltered)} sin filtro + "
+            f"{len(hits_anchor)} anchors → {len(hits)} total"
+        )
+    else:
+        hits = _merge_and_dedup(hits_unfiltered, hits_anchor)
+
+    # Filtrado por query gates
     hits = filter_hits_by_query_gates(query, hits, CHUNK_TYPE_QUERY_GATES)
 
-    # 3) Merge + dedupe by chunk_id
+    # Dedup final
     merged = []
     seen = set()
     for h in hits:

@@ -45,7 +45,7 @@ VS_COLUMNS = [
     "chunk_id","doc_id","path","file_date","file_type","page_id","page_num","page_segment",
     "topic_heuristic",
     "topic_llm","topic_content",
-    "chunk_text","chunk_type"
+    "chunk_text","chunk_type","metadata_enrich"
 ]
 
 # # Para estos chunk_type, se EXIGE que la query contenga al menos 1 keyword.

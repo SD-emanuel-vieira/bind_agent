@@ -50,6 +50,7 @@ __all__ = [
     'glossary_expand_terms',
     'glossary_bonus',
     'prepare_rerank_candidates_glossary_aware',
+    'compute_metadata_bonus',
     
     # Funciones de detección (para uso interno y testing)
     'extract_query_anchors',
@@ -208,6 +209,83 @@ def compute_anchor_score(hit: Dict[str, Any], anchors: List[str]) -> int:
     return score
 
 
+# ============================================================
+# METADATA ENRICH BONUS
+# ============================================================
+
+def _parse_metadata_enrich(hit: Dict[str, Any]) -> Dict[str, Any]:
+    """Parsea metadata_enrich de un hit (puede ser JSON string o dict)."""
+    raw = hit.get("metadata_enrich")
+    if not raw:
+        return {}
+    if isinstance(raw, dict):
+        return raw
+    if isinstance(raw, str):
+        try:
+            import json
+            return json.loads(raw)
+        except (json.JSONDecodeError, ValueError):
+            return {}
+    return {}
+
+
+def compute_metadata_bonus(hit: Dict[str, Any], anchors: List[str]) -> int:
+    """
+    Calcula un bonus basado en coincidencias entre los anchors de la query
+    y los campos de metadata_enrich (table_metrics, keywords, entities).
+    
+    Scoring:
+    - Anchor matchea exacto en table_metrics:  +3 (más específico)
+    - Anchor es substring de table_metrics:     +2 (match parcial, ej: "previsiones" en "Previsiones & Otros")
+    - Anchor matchea en keywords:               +1
+    - Anchor matchea en entities:               +2
+    
+    Args:
+        hit: Diccionario con campo metadata_enrich
+        anchors: Lista de anchors extraídos de la query
+        
+    Returns:
+        Score total (entero >= 0)
+    """
+    meta = _parse_metadata_enrich(hit)
+    if not meta or not anchors:
+        return 0
+    
+    table_metrics = [_norm(m) for m in (meta.get("table_metrics") or []) if m]
+    keywords = [_norm(k) for k in (meta.get("keywords") or []) if k]
+    entities = [_norm(e) for e in (meta.get("entities") or []) if e]
+    
+    score = 0
+    
+    for anchor in anchors:
+        anchor_n = _norm(anchor)
+        if not anchor_n or len(anchor_n) < 3:
+            continue
+        
+        # table_metrics: match exacto (+3) o substring (+2)
+        for metric in table_metrics:
+            if anchor_n == metric:
+                score += 3
+                break
+            elif anchor_n in metric or metric in anchor_n:
+                score += 2
+                break
+        
+        # keywords: match exacto o substring (+1)
+        for kw in keywords:
+            if anchor_n == kw or anchor_n in kw or kw in anchor_n:
+                score += 1
+                break
+        
+        # entities: match exacto o substring (+2)
+        for ent in entities:
+            if anchor_n == ent or anchor_n in ent or ent in anchor_n:
+                score += 2
+                break
+    
+    return score
+
+
 # Aliases para compatibilidad con código que usa nombres con underscore
 _extract_query_anchors = extract_query_anchors
 _compute_anchor_score = compute_anchor_score
@@ -259,6 +337,9 @@ def prepare_rerank_candidates_glossary_aware(
     for hit in hits:
         anchor_score = compute_anchor_score(hit, anchors) if anchors else 0
         hit["_anchor_score"] = anchor_score
+        
+        metadata_bonus = compute_metadata_bonus(hit, anchors) if anchors else 0
+        hit["_metadata_bonus"] = metadata_bonus
     
     # ============================================================
     # Paso 2: Obtener términos del glosario
@@ -266,7 +347,7 @@ def prepare_rerank_candidates_glossary_aware(
     gl = glossary_expand_terms(query)
     terms = gl.get("terms", []) or []
     
-    # Si no hay términos del glosario, ordenar solo por anchor score
+    # Si no hay términos del glosario, ordenar solo por anchor score + metadata
     if not terms:
         for hit in hits:
             hit["_glossary_bonus"] = 0
@@ -277,6 +358,7 @@ def prepare_rerank_candidates_glossary_aware(
             hits,
             key=lambda h: (
                 h.get("_anchor_score", 0),
+                h.get("_metadata_bonus", 0),
                 float(h.get("score") or h.get("similarity") or 0.0)
             ),
             reverse=True
@@ -316,7 +398,7 @@ def prepare_rerank_candidates_glossary_aware(
     phrases = _dedupe(phrases)
     tokens = _dedupe(tokens)
     
-    # Si no hay frases ni tokens útiles, ordenar solo por anchor score
+    # Si no hay frases ni tokens útiles, ordenar solo por anchor score + metadata
     if not phrases and not tokens:
         for hit in hits:
             hit["_glossary_bonus"] = 0
@@ -325,6 +407,7 @@ def prepare_rerank_candidates_glossary_aware(
             hits,
             key=lambda h: (
                 h.get("_anchor_score", 0),
+                h.get("_metadata_bonus", 0),
                 float(h.get("score") or h.get("similarity") or 0.0)
             ),
             reverse=True
@@ -401,8 +484,9 @@ def prepare_rerank_candidates_glossary_aware(
         hits,
         key=lambda h: (
             h.get("_anchor_score", 0) * 100,  # Prioridad 1: anchor score
-            h.get("_glossary_bonus", 0),       # Prioridad 2: glossary bonus
-            _base_score(h)                      # Prioridad 3: similarity score
+            h.get("_metadata_bonus", 0) * 10,  # Prioridad 2: metadata enrich bonus
+            h.get("_glossary_bonus", 0),        # Prioridad 3: glossary bonus
+            _base_score(h)                       # Prioridad 4: similarity score
         ),
         reverse=True
     )

@@ -8,6 +8,10 @@ BUSINESS_GLOSSARY_V2 = {
         "ctrl de gestion", "ctrl de gestión"
     ]},
 
+    "Previsiones":  {"desc": "Previsiones", "aliases": [
+        "previsiones", "Previsiones & Otros", "previsiones & otros", "previsiones y otros", "previsiones y/o otros"
+    ]},
+
     "TC":   {"desc": "Tarjeta de Crédito", "aliases": [
         "tarjeta de credito", "tarjeta de crédito", "tarjeta credito",
         "t.c.", "t c", "tcredito", "credit card", "tarj. de crédito"
