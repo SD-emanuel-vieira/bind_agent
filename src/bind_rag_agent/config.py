@@ -44,7 +44,7 @@ RETRY_SLEEP_SECS = float(_get_env("RAG_RETRY_SLEEP_SECS"))
 VS_COLUMNS = [
     "chunk_id","doc_id","path","file_date","file_type","page_id","page_num","page_segment",
     "topic_heuristic",
-    "topic_llm","topic_content",
+    "topic_llm","topic_content","context_text",
     "chunk_text","chunk_type","metadata_enrich"
 ]
 

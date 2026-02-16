@@ -7,6 +7,10 @@ import unicodedata
 from typing import Any, Dict, List, Set, Tuple, Optional
 from collections import defaultdict
 from bind_rag_agent.config import SEGMENTS, SEGMENT_ALIASES
+import logging
+
+# Configurar logger
+logger = logging.getLogger(__name__)
 
 # ==============================================================================
 # SECCIÓN 1: UTILIDADES DE TEXTO PURO
@@ -335,6 +339,51 @@ def _hit_has_any_segment(hit: Dict[str, Any]) -> bool:
     return _hit_get_segment(hit) != "general"
 
 
+def _is_likely_consolidated_table(hit: Dict[str, Any]) -> bool:
+    """
+    Detecta si un hit general probablemente contiene información consolidada
+    de múltiples segmentos (típicamente una tabla P&L general).
+    
+    Indicadores:
+    - Es de tipo 'table'
+    - El texto contiene múltiples menciones de segmentos
+    - O contiene palabras clave de consolidación
+    """
+    # Solo considerar tablas
+    if hit.get("chunk_type") != "table":
+        return False
+    
+    # Obtener texto del chunk
+    chunk_text = _norm_q(hit.get("chunk_text") or "")
+    
+    # Contar menciones de diferentes segmentos en el texto
+    segments_found = set()
+    for alias, canonical in SEGMENT_ALIASES.items():
+        pattern = rf"\b{re.escape(alias)}\b"
+        if re.search(pattern, chunk_text):
+            segments_found.add(canonical)
+    
+    # Si tiene 3+ segmentos diferentes, probablemente es consolidada
+    if len(segments_found) >= 3:
+        return True
+    
+    # Buscar palabras clave de consolidación
+    consolidation_patterns = [
+        r"\btotal\s+(?:segmentos?|bancas?)\b",
+        r"\bconsolidado\b",
+        r"\bagregado\b",
+        r"\btodos?\s+(?:los?\s+)?(?:segmentos?|bancas?)\b",
+        r"\bresumen\s+(?:por\s+)?(?:segmento|banca)\b",
+        r"\bdesglose\s+(?:por\s+)?(?:segmento|banca)\b",
+    ]
+    
+    for pattern in consolidation_patterns:
+        if re.search(pattern, chunk_text):
+            return True
+    
+    return False
+
+
 def _balance_segments(hits: List[Dict[str, Any]], max_per_segment: int = 3) -> List[Dict[str, Any]]:
     """
     Balancea los hits para tener representación de múltiples segmentos.
@@ -373,7 +422,8 @@ def drop_segment_topics_if_query_general(query: str, hits: List[Dict[str, Any]])
     Filtrado inteligente de segmentos con 3 comportamientos:
     
     1. Query COMPARATIVA entre segmentos:
-       → Mantener hits de TODOS los segmentos, balanceados
+       → PRIORIZAR hits generales (tablas consolidadas)
+       → COMPLEMENTAR con hits de segmentos específicos balanceados
        → Ejemplo: "¿Qué segmento ha generado más ingresos?"
        
     2. Query CON segmento específico:
@@ -391,19 +441,36 @@ def drop_segment_topics_if_query_general(query: str, hits: List[Dict[str, Any]])
     
     # ============================================================
     # CASO 1: Query comparativa entre segmentos
-    # → Mantener hits de todos los segmentos, balanceados
+    # → PRIORIZAR tablas generales consolidadas
+    # → COMPLEMENTAR con hits específicos si es necesario
     # ============================================================
     if _is_comparative_query(query):
-        # Filtrar solo hits que tengan algún segmento
+        # Separar hits generales vs específicos
+        general_hits = [h for h in hits if not _hit_has_any_segment(h)]
         segment_hits = [h for h in hits if _hit_has_any_segment(h)]
         
-        if segment_hits:
-            # Balancear para tener representación de cada segmento
-            balanced = _balance_segments(segment_hits, max_per_segment=3)
-            return balanced if balanced else hits
+        result = []
         
-        # Si no hay hits con segmentos, devolver originales
-        return hits
+        # PRIORIDAD 1A: Tablas generales que probablemente son consolidadas
+        # (tienen múltiples segmentos en el contenido)
+        consolidated_tables = [h for h in general_hits if _is_likely_consolidated_table(h)]
+        if consolidated_tables:
+            # Tomar las 3-5 mejor rankeadas
+            result.extend(consolidated_tables[:5])
+        
+        # PRIORIDAD 1B: Otras tablas/texto generales si no hay consolidadas
+        if len(result) < 2:
+            other_general = [h for h in general_hits if not _is_likely_consolidated_table(h)]
+            result.extend(other_general[:3 - len(result)])
+        
+        # PRIORIDAD 2: Complementar con hits de segmentos específicos balanceados
+        # Solo si no tenemos suficiente información general
+        if len(result) < 3 and segment_hits:
+            balanced = _balance_segments(segment_hits, max_per_segment=2)
+            # Agregar hasta completar ~8 hits totales
+            result.extend(balanced[:8 - len(result)])
+        
+        return result if result else hits
     
     # ============================================================
     # CASO 2: Query menciona segmento(s) específico(s)

@@ -66,16 +66,28 @@ def build_context(hits: List[Dict[str, Any]], max_chars: int = MAX_CONTEXT_CHARS
         
         text = (h.get("chunk_text_clean") or "").strip()
         chunk_type = h.get("chunk_type") or "text"
+        context_text = (h.get("context_text") or "").strip()
         
         if chunk_type == "table":
             header = (
                 f"[{sid}] TABLA | Contenido: {topic}\n"
                 f"Archivo: {path} | Página: {page_num} | {source_tag}\n"
-                f"NOTA: Los valores en esta tabla corresponden a '{topic}'. "
-                f"Usa el título/topic para interpretar qué representan los números.\n"
             )
+            if context_text:
+                header += (
+                    f"CONTEXTO DE LA MÉTRICA: {context_text}\n"
+                    f"NOTA: Los valores en esta tabla corresponden ESPECÍFICAMENTE a "
+                    f"'{context_text}'. NO confundir con otras métricas (ej: resultado operativo ≠ resultado de gestión).\n"
+                )
+            else:
+                header += (
+                    f"NOTA: Los valores en esta tabla corresponden a '{topic}'. "
+                    f"Usa el título/topic para interpretar qué representan los números.\n"
+                )
         else:
             header = f"[{sid}] path={path} | page_num={page_num} | topic={topic} | {source_tag}\n"
+            if context_text:
+                header += f"CONTEXTO: {context_text}\n"
         
         block = header + text + "\n"
 
@@ -127,10 +139,11 @@ def extract_evidence(query: str, hits: List[Dict[str, Any]]) -> Dict[str, Any]:
         "}\n\n"
         "REGLAS CRÍTICAS:\n"
         "1. TABLAS SIN HEADERS: Si un chunk es una TABLA, usa el 'topic' o 'Contenido:' para entender QUÉ representan los valores.\n"
-        "   - Ejemplo: Si topic='Resultados Integrales (YTD julio 2025)' y ves 'Banco Santander | 1,234', \n"
-        "     entonces 1,234 es el Resultado Integral YTD julio 2025 de Banco Santander.\n"
+        "   - Si el chunk tiene 'CONTEXTO DE LA MÉTRICA', ese campo te dice EXACTAMENTE qué métrica es.\n"
+        "   - Ejemplo: Si CONTEXTO='Resultado de gestión neto AxI' y ves 'Corporate | 969', \n"
+        "     entonces 969 es el Resultado de gestión neto AxI de Corporate, NO el resultado operativo.\n"
         "2. ASOCIAR ENTIDAD CON VALOR: Si la pregunta es sobre 'Banco Santander' y el chunk tiene una fila con 'Banco Santander | X',\n"
-        "   ese valor X corresponde a Banco Santander para la métrica indicada en el topic.\n"
+        "   ese valor X corresponde a Banco Santander para la métrica indicada en el topic o CONTEXTO.\n"
         "3. NO inventes información. Usa SOLO lo presente en el CONTEXTO.\n"
         "4. Cada quote debe ser literal y de máximo 25 palabras.\n"
         "5. Si la pregunta menciona una entidad específica, verifica que ESA entidad aparezca en el chunk.\n"
@@ -138,6 +151,8 @@ def extract_evidence(query: str, hits: List[Dict[str, Any]]) -> Dict[str, Any]:
         "7. DEDUP POR FUENTE: Si dos chunks de fuentes distintas (Directorio vs CdG) reportan la misma métrica "
         "con valores diferentes, usa SOLO el dato de la FUENTE PRIMARIA e ignora la SECUNDARIA. "
         "No reportes el mismo dato dos veces con valores distintos.\n"
+        "8. DISTINCIÓN DE MÉTRICAS: Si el CONTEXTO DE LA MÉTRICA indica una métrica distinta a la preguntada,\n"
+        "   marca answerable=false o indica en missing qué métrica tiene vs cuál se pidió.\n"
     )
 
     raw = call_chat(
@@ -219,6 +234,14 @@ def answer_from_evidence(query: str, hits: List[Dict[str, Any]], evidence: Dict[
         "- Si topic='Resultados Integrales (YTD julio 2025)' y ves 'Banco Santander | 500',\n"
         "  entonces 500 es el Resultado Integral YTD julio 2025 de Banco Santander.\n"
         "- SIEMPRE interpreta los valores usando el topic como contexto semántico.\n\n"
+        "REGLA CRÍTICA - CONTEXTO DE LA MÉTRICA:\n"
+        "- Algunos chunks incluyen un campo 'CONTEXTO DE LA MÉTRICA' que describe EXACTAMENTE\n"
+        "  qué métrica representan los valores numéricos de esa tabla.\n"
+        "- Si el CONTEXTO dice 'Resultado de gestión neto AxI', esos valores son SOLO esa métrica.\n"
+        "  NO son 'resultado operativo', NI 'resultado neto contable', NI otra métrica distinta.\n"
+        "- Si el usuario pregunta por una métrica diferente a la indicada en el CONTEXTO,\n"
+        "  responde que los datos disponibles corresponden a la métrica del CONTEXTO,\n"
+        "  no a la métrica preguntada.\n\n"
         "REGLA CRÍTICA DE DESAMBIGUACIÓN DE MÉTRICAS:\n"
         "- 'Resultado neto' SIN calificador adicional = 'Resultado de Gestión Neto AxI' (NO el Resultado Contable).\n"
         "- Solo responder con 'Resultado Contable' si el usuario pregunta explícitamente por 'resultado contable' o 'resultado neto contable'.\n"
@@ -255,6 +278,10 @@ def answer_from_evidence(query: str, hits: List[Dict[str, Any]], evidence: Dict[
         "- Si evidence.answerable es false: responde 'No encuentro esa información.'\n"
         "- Si evidence.answerable es true: extrae el valor de la entidad preguntada.\n"
         "- IMPORTANTE: El topic del chunk te dice qué métrica es. Úsalo para interpretar.\n"
+        "- CONTEXTO DE LA MÉTRICA: Si un chunk incluye este campo, describe EXACTAMENTE qué métrica\n"
+        "  representan los valores. Si la métrica del contexto no coincide con lo preguntado,\n"
+        "  aclara qué datos tienes y qué se preguntó (ej: 'Los datos disponibles corresponden a\n"
+        "  Resultado de gestión neto AxI, no a resultado operativo').\n"
         "- NO inventes cifras: si no está, no la pongas.\n"
         "- DEDUP POR FUENTE: Cada chunk está etiquetado como FUENTE PRIMARIA o SECUNDARIA. "
         "Si dos fuentes distintas reportan la misma métrica con valores diferentes, "

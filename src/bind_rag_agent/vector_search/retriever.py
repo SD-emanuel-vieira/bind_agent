@@ -182,6 +182,7 @@ def _merge_hit_fields(preferred: Dict[str, Any], candidate: Dict[str, Any]) -> D
         "topic_heuristic",
         "topic_llm",
         "topic_content",
+        "context_text",
         "page_segment",
         "path",
         "file_date",

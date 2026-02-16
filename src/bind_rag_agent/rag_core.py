@@ -84,12 +84,15 @@ def answer_with_rag(query: str) -> Dict[str, Any]:
 
     # Se construye la evidencia:
     evidence = extract_evidence(query, top_hits)
+    print("Se armó la evidencia")
     
     # Se arma la respuesta final:
     answer = answer_from_evidence(query, top_hits, evidence)
+    print("Se armó la respuesta")
     
     # Se construye el contexto:
     _, citations = build_context(top_hits, max_chars=MAX_CONTEXT_CHARS) 
+    print("Se armó el contexto")
 
     return {
         "query": query,
