@@ -2,11 +2,12 @@ import re
 import json
 import time
 from datetime import datetime, date
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 import os
 import requests
 from mlflow.utils.databricks_utils import get_databricks_host_creds
 from databricks.vector_search.client import VectorSearchClient
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from bind_rag_agent.config import (
     VS_ENDPOINT, 
@@ -14,7 +15,9 @@ from bind_rag_agent.config import (
     VS_COLUMNS, 
     TOP_K_CANDIDATES, 
     LEX_FALLBACK_LIMIT,
-    CHUNK_TYPE_QUERY_GATES
+    CHUNK_TYPE_QUERY_GATES,
+    SEGMENT_ALIASES,
+    CANONICAL_SEGMENTS,
 )
 from bind_rag_agent.text_utils import (
     parse_vs_similarity_response, 
@@ -443,18 +446,334 @@ def _merge_and_dedup(
 
 
 # ============================================================
-# FUNCIÓN PRINCIPAL: retrieve_candidates
+# DESCOMPOSICIÓN DE QUERY MULTI-SEGMENTO
 # ============================================================
-def retrieve_candidates(query: str, k: int = TOP_K_CANDIDATES) -> List[Dict[str, Any]]:
+
+# Conectores que quedan huérfanos al remover nombres de segmentos
+_SEGMENT_CONNECTORS = {"para", "de", "y", "e", "entre", "por"}
+
+
+def _clean_base_query(text: str) -> str:
     """
-    Recupera candidatos usando retrieval en dos pasadas:
+    Limpia secuencias de conectores huérfanos que quedan después 
+    de remover los nombres de segmentos de la query.
+    
+    Regla: un conector solo entre dos palabras de contenido es legítimo
+    ("ingresos de octubre"). Dos o más conectores contiguos son residuo
+    de la remoción ("ingresos de y en octubre" → "de y" son residuos).
+    
+    Los conectores al final de la string siempre se descartan.
+    """
+    words = text.split()
+    cleaned: List[str] = []
+    buffer: List[str] = []  # acumula conectores contiguos
+    
+    for w in words:
+        if w in _SEGMENT_CONNECTORS:
+            buffer.append(w)
+        else:
+            if len(buffer) == 1:
+                # Un solo conector es legítimo: "ingresos de octubre"
+                cleaned.append(buffer[0])
+            # Si buffer tiene 2+ conectores, son residuos → descartar
+            buffer = []
+            cleaned.append(w)
+    
+    # No agregar buffer final (conectores al final = residuos)
+    return " ".join(cleaned)
+
+
+# Patrones que indican "todos los segmentos" sin nombrarlos explícitamente
+_ALL_SEGMENTS_PATTERNS = [
+    r"cada\s+segmento",              # "cada segmento"
+    r"cada\s+banca",                 # "cada banca"
+    r"todos?\s+los\s+segmentos?",    # "todos los segmentos"
+    r"todas?\s+las\s+bancas?",       # "todas las bancas"
+    r"por\s+segmento",              # "desglose por segmento"
+    r"por\s+banca",                 # "resultado por banca"
+    r"de\s+cada\s+segmento",        # "resultado de cada segmento"
+    r"de\s+cada\s+banca",           # "resultado de cada banca"
+    r"desglose\s+(?:por\s+)?(?:segmentos?|bancas?)",  # "desglose por segmentos"
+    r"breakdown\s+(?:por\s+)?(?:segmentos?|bancas?)",  # "breakdown por segmento"
+]
+
+
+def _detect_all_segments_intent(query: str) -> bool:
+    """
+    Detecta si la query pide info de TODOS los segmentos sin nombrarlos
+    explícitamente.
+    
+    Ejemplos:
+        "resultado operativo de cada segmento para octubre 2025" → True
+        "resultado operativo por banca octubre 2025" → True
+        "resultado operativo de octubre 2025" → False
+        "resultado operativo de corporate octubre 2025" → False
+    """
+    q_lower = query.lower().strip()
+    for pattern in _ALL_SEGMENTS_PATTERNS:
+        if re.search(pattern, q_lower):
+            return True
+    return False
+
+
+def _remove_all_segments_phrase(text: str) -> str:
+    """
+    Remueve las frases de 'todos los segmentos' del texto base
+    para construir sub-queries limpias.
+    
+    "resultado operativo de cada segmento para octubre 2025"
+    → "resultado operativo para octubre 2025"
+    """
+    for pattern in _ALL_SEGMENTS_PATTERNS:
+        text = re.sub(pattern, " ", text, flags=re.IGNORECASE)
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def decompose_multi_segment_query(
+    query: str,
+) -> Optional[Dict[str, Any]]:
+    """
+    Detecta si la query pide info de múltiples segmentos y la descompone
+    en sub-queries independientes.
+    
+    Detecta DOS tipos de queries multi-segmento:
+    
+    A) Segmentos explícitos: "resultado operativo para Empresas, corporate e institucional"
+       → Descompone solo en los segmentos nombrados.
+       
+    B) Todos los segmentos implícitos: "resultado operativo de cada segmento"
+       → Descompone en TODOS los segmentos canónicos.
+    
+    Returns None si la query es single-segment o general.
+    
+    Returns dict con:
+        base_query:       parte sin segmentos ("resultado operativo de octubre 2025")
+        segments:         lista de segmentos canónicos
+        sub_queries:      lista de sub-queries, una por segmento
+        all_segments:     True si se expandió a todos los segmentos (tipo B)
+    """
+    q_lower = query.lower().strip().strip("¿?").strip()
+    
+    # ================================================================
+    # TIPO B: "cada segmento" / "por banca" → expandir a TODOS
+    # ================================================================
+    if _detect_all_segments_intent(query):
+        segments = list(CANONICAL_SEGMENTS)  # todos
+        
+        base = _remove_all_segments_phrase(q_lower)
+        base = re.sub(r"[,;]", " ", base)
+        base = re.sub(r"\s+", " ", base).strip()
+        base = _clean_base_query(base)
+        
+        sub_queries = [f"{base} {seg}" for seg in segments]
+        
+        logger.info(
+            f"[retriever] ALL-SEGMENTS decomposition: "
+            f"segments={segments}, base='{base}', "
+            f"sub_queries={sub_queries}"
+        )
+        
+        return {
+            "base_query": base,
+            "segments": segments,
+            "sub_queries": sub_queries,
+            "all_segments": True,
+        }
+    
+    # ================================================================
+    # TIPO A: Segmentos explícitos nombrados ("empresas, corporate e institucional")
+    # ================================================================
+    detected: List[Tuple[str, int]] = []
+    for alias, canonical in SEGMENT_ALIASES.items():
+        match = re.search(rf"\b{re.escape(alias)}\b", q_lower)
+        if match and not any(seg == canonical for seg, _ in detected):
+            detected.append((canonical, match.start()))
+    
+    # Solo descomponer si hay 2+ segmentos distintos
+    if len(detected) < 2:
+        return None
+    
+    detected.sort(key=lambda x: x[1])
+    segments = [seg for seg, _ in detected]
+    
+    # Construir base_query removiendo los segmentos
+    base = q_lower
+    for alias in sorted(SEGMENT_ALIASES.keys(), key=len, reverse=True):
+        base = re.sub(rf"\b{re.escape(alias)}\b", " ", base)
+    
+    base = re.sub(r"[,;]", " ", base)
+    base = re.sub(r"\s+", " ", base).strip()
+    base = _clean_base_query(base)
+    
+    sub_queries = [f"{base} {seg}" for seg in segments]
+    
+    logger.info(
+        f"[retriever] Multi-segment decomposition: "
+        f"segments={segments}, base='{base}', "
+        f"sub_queries={sub_queries}"
+    )
+    
+    return {
+        "base_query": base,
+        "segments": segments,
+        "sub_queries": sub_queries,
+        "all_segments": False,
+    }
+
+
+# ============================================================
+# MERGE BALANCEADO ROUND-ROBIN (para multi-segmento)
+# ============================================================
+
+def _balanced_merge(
+    by_segment: Dict[str, List[Dict[str, Any]]],
+    k_total: int,
+) -> List[Dict[str, Any]]:
+    """
+    Merge round-robin que garantiza representación de cada segmento.
+    
+    Orden de prioridad por ronda:
+    1. Segmentos reales (en orden de aparición en la query)
+    2. _general (tablas consolidadas, etc.)
+    
+    Dedup por chunk_id: si un chunk ya se agregó por otro segmento,
+    se salta y se toma el siguiente.
+    """
+    merged: List[Dict[str, Any]] = []
+    seen: Set[str] = set()
+    
+    # Segmentos reales primero, _general al final
+    real = [s for s in by_segment if s != "_general"]
+    order = real + (["_general"] if "_general" in by_segment else [])
+    
+    indices = {seg: 0 for seg in order}
+    
+    safety_limit = k_total * 3
+    iterations = 0
+    
+    while len(merged) < k_total and iterations < safety_limit:
+        added_this_round = False
+        
+        for seg in order:
+            hits = by_segment.get(seg, [])
+            idx = indices[seg]
+            
+            # Buscar el siguiente hit no-duplicado
+            while idx < len(hits):
+                hit = hits[idx]
+                cid = hit.get("chunk_id")
+                idx += 1
+                
+                if cid and cid in seen:
+                    continue
+                
+                # Tag de origen para tracing/debug
+                hit["_retrieval_segment"] = seg
+                merged.append(hit)
+                if cid:
+                    seen.add(cid)
+                added_this_round = True
+                break
+            
+            indices[seg] = idx
+            
+            if len(merged) >= k_total:
+                break
+        
+        if not added_this_round:
+            break
+        
+        iterations += 1
+    
+    return merged
+
+
+# ============================================================
+# RETRIEVAL POR SEGMENTO CON PARALELIZACIÓN
+# ============================================================
+
+# Max workers para sub-queries paralelas (ajustar según entorno)
+_MAX_PARALLEL_WORKERS = int(os.getenv("RAG_MAX_PARALLEL_WORKERS", "4"))
+
+
+def _retrieve_per_segment(
+    decomposition: Dict[str, Any],
+    k_total: int = TOP_K_CANDIDATES,
+) -> List[Dict[str, Any]]:
+    """
+    Ejecuta retrieval independiente para cada sub-query y merge
+    los resultados con cobertura balanceada por segmento.
+    
+    Las sub-queries se ejecutan EN PARALELO para minimizar latencia.
+    
+    Args:
+        decomposition: Output de decompose_multi_segment_query
+        k_total:       Total máximo de candidatos a retornar
+    
+    Returns:
+        Lista de candidatos con cobertura balanceada de todos los segmentos.
+    """
+    segments = decomposition["segments"]
+    sub_queries = decomposition["sub_queries"]
+    n_segments = len(segments)
+    
+    # k por segmento: suficientes para llenar el total con margen de dedup
+    k_per = max(k_total // n_segments + 5, 15)
+    
+    # Preparar todas las tareas: sub-queries + query base
+    tasks: List[Tuple[str, str]] = []  # (segment_label, query_text)
+    for segment, sub_q in zip(segments, sub_queries):
+        tasks.append((segment, sub_q))
+    tasks.append(("_general", decomposition["base_query"]))
+    
+    # Ejecutar en paralelo
+    by_segment: Dict[str, List[Dict[str, Any]]] = {}
+    
+    with ThreadPoolExecutor(max_workers=min(_MAX_PARALLEL_WORKERS, len(tasks))) as pool:
+        future_to_segment = {
+            pool.submit(_retrieve_single_query, task_query, k_per): task_seg
+            for task_seg, task_query in tasks
+        }
+        
+        for future in as_completed(future_to_segment):
+            seg = future_to_segment[future]
+            try:
+                hits = future.result()
+                by_segment[seg] = hits
+                logger.info(f"[retriever] Sub-query '{seg}': {len(hits)} hits")
+            except Exception as e:
+                logger.warning(f"[retriever] Sub-query '{seg}' failed: {repr(e)}")
+                by_segment[seg] = []
+    
+    # Merge round-robin balanceado
+    merged = _balanced_merge(by_segment, k_total)
+    
+    logger.info(
+        f"[retriever] Multi-segment merge: "
+        f"{' + '.join(f'{s}={len(by_segment.get(s,[]))}' for s in segments + ['_general'])} "
+        f"→ {len(merged)} total"
+    )
+    
+    return merged
+
+
+# ============================================================
+# FUNCIÓN DE RETRIEVAL SINGLE-QUERY (lógica original)
+# ============================================================
+
+def _retrieve_single_query(query: str, k: int = TOP_K_CANDIDATES) -> List[Dict[str, Any]]:
+    """
+    Recupera candidatos para UNA sola query usando retrieval en dos pasadas.
+    
+    Esta es la lógica original de retrieve_candidates, renombrada para
+    poder reutilizarla como building block del retrieval multi-segmento.
     
     Pasada 1 (CON filtro temporal): Si la query menciona una fecha,
     filtra vector search y lexical fallback por file_date >= mes preguntado.
-    Esto prioriza documentos del período correcto.
     
     Pasada 2 (SIN filtro): Retrieval normal sin restricción de fecha.
-    Captura evidencia que el filtro temporal pueda haber excluido.
+    
+    Pasada 3 (ANCHORS): Búsqueda léxica focalizada por términos clave.
     
     Los resultados se mergean priorizando la pasada filtrada.
     """
@@ -580,10 +899,6 @@ def retrieve_candidates(query: str, k: int = TOP_K_CANDIDATES) -> List[Dict[str,
 
     # ================================================================
     # PASADA 3: Búsqueda léxica focalizada por ANCHORS
-    # Red de seguridad: busca con solo los términos clave de la query,
-    # sin ruido de stopwords ni expansiones. Esto captura chunks donde
-    # el término literal (ej: "previsiones") aparece en el texto pero
-    # no tiene suficiente similitud semántica para estar en el top-K.
     # ================================================================
     hits_anchor: List[Dict[str, Any]] = []
     
@@ -636,3 +951,48 @@ def retrieve_candidates(query: str, k: int = TOP_K_CANDIDATES) -> List[Dict[str,
             seen.add(cid)
 
     return merged
+
+
+# ============================================================
+# FUNCIÓN PRINCIPAL: retrieve_candidates (PUNTO DE ENTRADA)
+# ============================================================
+
+def retrieve_candidates(query: str, k: int = TOP_K_CANDIDATES) -> List[Dict[str, Any]]:
+    """
+    Recupera candidatos usando retrieval inteligente.
+    
+    NUEVO: Detecta automáticamente queries que piden información sobre
+    múltiples segmentos (ej: "empresas, corporate e institucional") y
+    ejecuta retrieval independiente por cada segmento con merge balanceado.
+    
+    Para queries de un solo segmento o generales, usa el flujo existente
+    sin ningún cambio.
+    
+    Flujo:
+        1. Detectar si es multi-segmento
+           ├── SI:  descomponer → retrieval paralelo por sub-query → merge round-robin
+           └── NO:  retrieval normal (pasada 1 + pasada 2 + anchors)
+        
+        2. El resultado se pasa al pipeline downstream (rerank, evidence, answer)
+           exactamente igual que antes.
+    """
+    # ================================================================
+    # Intentar descomposición multi-segmento
+    # ================================================================
+    decomposition = decompose_multi_segment_query(query)
+    
+    if decomposition:
+        logger.info(
+            f"[retriever] MULTI-SEGMENT query detected: "
+            f"segments={decomposition['segments']}, "
+            f"sub_queries={decomposition['sub_queries']}"
+        )
+        return _retrieve_per_segment(
+            decomposition=decomposition,
+            k_total=k,
+        )
+    
+    # ================================================================
+    # Query normal (single segment o general) → flujo existente
+    # ================================================================
+    return _retrieve_single_query(query, k)

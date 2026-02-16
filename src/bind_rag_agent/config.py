@@ -56,6 +56,10 @@ CHUNK_TYPE_QUERY_GATES = {
 # Segmentos conocidos
 SEGMENTS = {"empresas", "corporate", "institucional", "minorista", "baas", "pyme", "pymes"}
 
+# Lista ordenada de segmentos canónicos (sin duplicados, sin aliases)
+# Usada por decompose_multi_segment_query cuando detecta "cada segmento" / "por banca"
+CANONICAL_SEGMENTS = ["empresas", "corporate", "institucional", "minorista", "baas", "pyme"]
+
 # Mapeo de aliases a segmento canónico
 SEGMENT_ALIASES = {
     "empresas": "empresas",
@@ -72,5 +76,3 @@ SEGMENT_ALIASES = {
     "pyme": "pyme",
     "pymes": "pyme",
 }
-
-

@@ -419,7 +419,11 @@ def _balance_segments(hits: List[Dict[str, Any]], max_per_segment: int = 3) -> L
 
 def drop_segment_topics_if_query_general(query: str, hits: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
-    Filtrado inteligente de segmentos con 3 comportamientos:
+    Filtrado inteligente de segmentos con 4 comportamientos:
+    
+    0. Query ya procesada por MULTI-SEGMENT retrieval:
+       → NO filtrar — el retrieval ya garantizó cobertura balanceada
+       → Detectado por presencia de tag '_retrieval_segment' en los hits
     
     1. Query COMPARATIVA entre segmentos:
        → PRIORIZAR hits generales (tablas consolidadas)
@@ -435,6 +439,21 @@ def drop_segment_topics_if_query_general(query: str, hits: List[Dict[str, Any]])
        → Ejemplo: "Resultado operativo octubre 2025"
     """
     if not hits:
+        return hits
+
+    # ============================================================
+    # CASO 0: Multi-segment retrieval ya aplicado
+    # Si los hits vienen del retrieval multi-segmento (tienen tag
+    # _retrieval_segment), el balance ya está garantizado.
+    # NO filtrar para no descartar evidencia que se buscó a propósito.
+    # ============================================================
+    has_retrieval_tags = any(
+        h.get("_retrieval_segment") for h in hits
+    )
+    if has_retrieval_tags:
+        logger.info(
+            "[drop_segment] CASO 0: Multi-segment retrieval detected, skipping filter"
+        )
         return hits
 
     qn = _norm_q(query)
