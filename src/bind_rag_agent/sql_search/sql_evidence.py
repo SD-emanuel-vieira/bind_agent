@@ -16,9 +16,13 @@ from bind_rag_agent.config import (
     SCHEMA_CACHE_TTL,
 )
 
-# Obtener la sesión de Spark activa
-spark = SparkSession.builder.getOrCreate()
+_spark = None
 
+def _get_spark():
+    global _spark
+    if _spark is None:
+        _spark = SparkSession.builder.getOrCreate()
+    return _spark
 
 # =========================================================================
 # Utilidad para suprimir logs de error de PySpark/gRPC
@@ -65,14 +69,14 @@ def get_schema_text() -> str:
     return _SCHEMA_CACHE["text"]
 
 def sql_tool(sql: str, n: int = SQL_RESULT_LIMIT) -> str:
-    df = spark.sql(sql)
+    df = _get_spark().sql(sql)
     return df.limit(n).toPandas().to_string(index=False)
 
 def run_sql_preview(sql: str, n: int = SQL_RESULT_LIMIT) -> dict:
     """Ejecuta SQL y retorna resultado con metadata. Suprime logs de error."""
     with suppress_spark_errors():
         try:
-            df = spark.sql(sql)
+            df = _get_spark().sql(sql)
             has_rows = df.limit(1).count() > 0
             preview = df.limit(n).toPandas().to_string(index=False)
             return {'ok': True, 'has_rows': has_rows, 'preview': preview, 'error': None}

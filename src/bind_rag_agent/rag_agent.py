@@ -1,4 +1,5 @@
 from bind_rag_agent.rag_core import *
+import json
 
 # -------------------------
 # MLflow PyFunc Model
