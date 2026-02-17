@@ -58,7 +58,7 @@ SEGMENTS = {"empresas", "corporate", "institucional", "minorista", "baas", "pyme
 
 # Lista ordenada de segmentos canónicos (sin duplicados, sin aliases)
 # Usada por decompose_multi_segment_query cuando detecta "cada segmento" / "por banca"
-CANONICAL_SEGMENTS = ["empresas", "corporate", "institucional", "minorista", "baas", "pyme"]
+CANONICAL_SEGMENTS = ["empresas", "corporate", "institucional", "minorista", "baas"]
 
 # Mapeo de aliases a segmento canónico
 SEGMENT_ALIASES = {

@@ -74,6 +74,86 @@ def tie_break_by_date_in_blocks(
 
 
 # ============================================================
+# SORT POR PRIORIDAD DE FUENTE + FECHA
+# ============================================================
+
+# Prioridad de fuente: menor número = mayor prioridad
+_SOURCE_PRIORITY = {
+    "directorio": 0,   # Directorio BIND Banco → máxima prioridad
+    "cdg": 1,           # CdG (Comité de Gestión)
+}
+_SOURCE_PRIORITY_DEFAULT = 9  # Otros archivos
+
+
+def _get_source_priority(hit: Dict[str, Any]) -> int:
+    """Obtiene la prioridad numérica de la fuente del hit."""
+    path = (hit.get("path") or "").lower()
+    for pattern, priority in _SOURCE_PRIORITY.items():
+        if pattern in path:
+            return priority
+    return _SOURCE_PRIORITY_DEFAULT
+
+
+def sort_by_source_and_date(
+    hits: List[Dict[str, Any]],
+    group_by_document: bool = False,
+) -> List[Dict[str, Any]]:
+    """
+    Ordena hits por prioridad de fuente y fecha.
+    
+    Tiene DOS modos de operación:
+    
+    MODO NORMAL (group_by_document=False):
+        Score → fuente → fecha → página
+        Preserva el orden de relevancia. Solo actúa como tiebreaker en empates.
+    
+    MODO AGRUPADO (group_by_document=True):
+        Fuente → fecha → página   (score IGNORADO)
+        
+        Garantiza que TODAS las páginas del mismo documento queden juntas
+        y en orden de página, independientemente de diferencias menores de score.
+        
+        Esto es crítico para multi-segmento: una página del Directorio Nov18
+        con score=9 (ej: p26 con empresas) es más valiosa que una página
+        de CdG con score=11, porque necesitamos cobertura completa del
+        documento principal.
+        
+        Ejemplo con el trace real:
+        ANTES:  p24(11), p25(11), p27(11), p28(11), ... CdG..., p26(9)
+        DESPUÉS: p24, p25, p26, p27, p28, ... CdG...
+    """
+    def _date_as_int(h: Dict[str, Any]) -> int:
+        """Convierte file_date a int para sort numérico. '2025-11-18' → 20251118."""
+        fd = h.get("file_date") or ""
+        try:
+            return int(fd.replace("-", ""))
+        except (ValueError, AttributeError):
+            return 0
+
+    if group_by_document:
+        # Modo agrupado: fuente → fecha → página (score ignorado)
+        return sorted(
+            hits,
+            key=lambda h: (
+                _get_source_priority(h),       # source ASC (Directorio primero)
+                -_date_as_int(h),              # date DESC (más reciente primero)
+                h.get("page_num") or 999,      # page ASC (orden de lectura)
+            ),
+        )
+    else:
+        # Modo normal: score → fuente → fecha → página
+        return sorted(
+            hits,
+            key=lambda h: (
+                -(h.get("_anchor_score", 0) + h.get("_metadata_bonus", 0)),  # score DESC
+                _get_source_priority(h),                                       # source ASC
+                -_date_as_int(h),                                              # date DESC
+                h.get("page_num") or 999,                                      # page ASC
+            ),
+        )
+
+
+# ============================================================
 # ENFORCE ANCHOR PRIORITY
 # ============================================================
 

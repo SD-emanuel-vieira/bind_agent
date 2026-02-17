@@ -31,14 +31,23 @@ def _classify_source(path: str) -> str:
 # -------------------------
 # Build context (with [S#] citations) - MEJORADO
 # -------------------------
-def build_context(hits: List[Dict[str, Any]], max_chars: int = MAX_CONTEXT_CHARS) -> Tuple[str, List[Dict[str, str]]]:
+def build_context(
+    hits: List[Dict[str, Any]], 
+    max_chars: int = MAX_CONTEXT_CHARS,
+    max_chars_per_chunk: Optional[int] = None,
+) -> Tuple[str, List[Dict[str, str]]]:
     """
     Construye el contexto para el LLM.
     
     MEJORADO: 
     - El topic se presenta de forma prominente para tablas sin headers.
-    - Cada hit se etiqueta con su fuente (Directorio, CdG, etc.) y si es
-      la fuente primaria (primer hit de ese tipo de fuente).
+    - Cada hit se etiqueta con su fuente (Directorio, CdG, etc.).
+    
+    NUEVO parámetro max_chars_per_chunk:
+    - Cuando es None: comportamiento original (chunks completos, trunca si se pasa el total).
+    - Cuando tiene valor: cada chunk individual se trunca a ese límite antes de agregarse.
+      Esto garantiza que TODOS los chunks (o la mayoría) quepan en el contexto,
+      sacrificando detalle de cada tabla en vez de perder segmentos enteros.
     """
     blocks = []
     cites = []
@@ -89,6 +98,13 @@ def build_context(hits: List[Dict[str, Any]], max_chars: int = MAX_CONTEXT_CHARS
             if context_text:
                 header += f"CONTEXTO: {context_text}\n"
         
+        # Truncar texto del chunk si hay límite por chunk
+        if max_chars_per_chunk and len(text) > max_chars_per_chunk:
+            # Reservar espacio para el header y un aviso de truncado
+            text_budget = max_chars_per_chunk - len(header) - 50
+            if text_budget > 200:
+                text = text[:text_budget] + "\n[... tabla truncada por espacio ...]"
+        
         block = header + text + "\n"
 
         if total + len(block) > max_chars:
@@ -108,20 +124,85 @@ def build_context(hits: List[Dict[str, Any]], max_chars: int = MAX_CONTEXT_CHARS
 
 
 # -------------------------
-# Extracción de evidencia - MEJORADO
+# Extracción de evidencia - MEJORADO con soporte multi-segmento
 # -------------------------
-def extract_evidence(query: str, hits: List[Dict[str, Any]]) -> Dict[str, Any]:
+def extract_evidence(
+    query: str, 
+    hits: List[Dict[str, Any]], 
+    multi_segment_info: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """
+    Extrae evidencia estructurada de los hits.
     
+    NUEVO: Cuando multi_segment_info está presente, ajusta el prompt para
+    requerir cobertura de TODOS los segmentos y aumenta los límites.
+    
+    Para queries normales (multi_segment_info=None), el comportamiento
+    es idéntico al anterior.
+    """
     if not hits:
         return {"answerable": False, "missing": ["No se encontraron documentos"]}
     
-    context, _ = build_context(hits, max_chars=12000)
+    # Para multi-segmento, dar más espacio y limitar cada chunk individualmente
+    # para garantizar que TODOS los segmentos quepan en el contexto
+    if multi_segment_info:
+        n_segments = len(multi_segment_info.get("segments", []))
+        max_ctx = 30000
+        # Presupuesto por chunk: garantiza que al menos n_segments + 3 chunks quepan
+        min_chunks_needed = n_segments + 3
+        chars_per_chunk = max(max_ctx // min_chunks_needed, 2000)
+    else:
+        max_ctx = 12000
+        chars_per_chunk = None  # sin límite por chunk → comportamiento original
+    
+    context, _ = build_context(hits, max_chars=max_ctx, max_chars_per_chunk=chars_per_chunk)
 
     system = (
         "Eres un extractor de evidencia para un sistema RAG financiero. "
         "Tu tarea es identificar en el CONTEXTO los extractos que permiten responder la pregunta. "
         "Devuelve SOLO JSON válido, sin texto adicional."
     )
+
+    # ================================================================
+    # Instrucción adicional para multi-segmento
+    # ================================================================
+    multi_segment_instruction = ""
+    if multi_segment_info:
+        segments = multi_segment_info.get("segments", [])
+        segment_list = ", ".join(segments)
+        
+        # Construir mapa de aliases para que el LLM sepa cómo buscar cada segmento
+        from bind_rag_agent.config import SEGMENT_ALIASES
+        alias_map = {}
+        for alias, canonical in SEGMENT_ALIASES.items():
+            if canonical in segments:
+                alias_map.setdefault(canonical, []).append(alias)
+        
+        alias_hints = []
+        for seg in segments:
+            aliases = alias_map.get(seg, [seg])
+            unique_aliases = sorted(set(a for a in aliases if a != seg))
+            if unique_aliases:
+                alias_hints.append(f"'{seg}' (también puede aparecer como: {', '.join(unique_aliases)})")
+            else:
+                alias_hints.append(f"'{seg}'")
+        
+        alias_text = "\n".join(f"     - {h}" for h in alias_hints)
+        
+        multi_segment_instruction = (
+            f"\n9. COBERTURA MULTI-SEGMENTO OBLIGATORIA:\n"
+            f"   La pregunta pide información de ESTOS segmentos: [{segment_list}].\n\n"
+            f"   MAPA DE SEGMENTOS (busca estas variantes en CADA chunk):\n"
+            f"{alias_text}\n\n"
+            f"   CHECKLIST OBLIGATORIO — para cada segmento debes:\n"
+            f"   a) Buscar en TODOS los chunks [S1] a [S{len(hits)}] si contiene datos de ese segmento.\n"
+            f"   b) Los datos de un segmento pueden estar en CUALQUIER chunk, no solo en los primeros.\n"
+            f"   c) Si encuentras el dato → agrégalo como key_point con el sid correspondiente.\n"
+            f"   d) Si NO lo encuentras en ningún chunk → agrégalo en 'missing'.\n"
+            f"   e) answerable=true solo si tienes datos de AL MENOS la mayoría de los segmentos.\n"
+            f"   f) IMPORTANTE: Cada página del Directorio suele tener datos de UN segmento distinto.\n"
+            f"      Revisa TODAS las páginas del Directorio antes de declarar que falta un segmento.\n"
+        )
 
     user = (
         f"Pregunta: {query}\n\n"
@@ -153,13 +234,17 @@ def extract_evidence(query: str, hits: List[Dict[str, Any]]) -> Dict[str, Any]:
         "No reportes el mismo dato dos veces con valores distintos.\n"
         "8. DISTINCIÓN DE MÉTRICAS: Si el CONTEXTO DE LA MÉTRICA indica una métrica distinta a la preguntada,\n"
         "   marca answerable=false o indica en missing qué métrica tiene vs cuál se pidió.\n"
+        f"{multi_segment_instruction}"
     )
+
+    # Para multi-segmento, más tokens para cubrir todos los segmentos
+    max_tok = 1500 if multi_segment_info else 800
 
     raw = call_chat(
         endpoint=LLM_ENDPOINT,
         messages=[{"role":"system","content":system},{"role":"user","content":user}],
         temperature=0.0,
-        max_tokens=800
+        max_tokens=max_tok
     )
     parsed = safe_json_load(raw) or {"answerable": False, "missing": ["No se pudo parsear evidencia"], "key_points": [], "evidence": []}
 
@@ -168,6 +253,10 @@ def extract_evidence(query: str, hits: List[Dict[str, Any]]) -> Dict[str, Any]:
     parsed.setdefault("missing", [])
     parsed.setdefault("key_points", [])
     parsed.setdefault("evidence", [])
+
+    # Límites ajustados para multi-segmento
+    ev_limit = 12 if multi_segment_info else 6
+    kp_limit = 12 if multi_segment_info else 6
 
     # Dedup evidence by (sid, quote)
     seen_ev = set()
@@ -179,7 +268,7 @@ def extract_evidence(query: str, hits: List[Dict[str, Any]]) -> Dict[str, Any]:
         if sid and quote and key not in seen_ev:
             uniq_ev.append(e)
             seen_ev.add(key)
-    parsed["evidence"] = uniq_ev[:6]
+    parsed["evidence"] = uniq_ev[:ev_limit]
 
     # Dedup key_points by claim text
     seen_kp = set()
@@ -189,32 +278,58 @@ def extract_evidence(query: str, hits: List[Dict[str, Any]]) -> Dict[str, Any]:
         if claim and claim not in seen_kp:
             uniq_kp.append(kp)
             seen_kp.add(claim)
-    parsed["key_points"] = uniq_kp[:6]
+    parsed["key_points"] = uniq_kp[:kp_limit]
 
     return parsed 
 
 
 # -------------------------
-# Respuesta con evidencia - MEJORADO
+# Respuesta con evidencia - MEJORADO con soporte multi-segmento
 # -------------------------
-def answer_from_evidence(query: str, hits: List[Dict[str, Any]], evidence: Dict[str, Any]) -> str:
+def answer_from_evidence(
+    query: str, 
+    hits: List[Dict[str, Any]], 
+    evidence: Dict[str, Any],
+    multi_segment_info: Optional[Dict[str, Any]] = None,
+) -> str:
     """
     Respuesta directa y factual.
     
-    MEJORADO: Instrucciones para interpretar tablas usando el topic.
+    NUEVO: Cuando multi_segment_info está presente, fuerza modo 
+    "multi_segment" que requiere cobertura de todos los segmentos.
+    
+    Para queries normales (multi_segment_info=None), el comportamiento
+    es idéntico al anterior.
     """
-    context, _ = build_context(hits, max_chars=12000)
+    # Para multi-segmento, más contexto con límite por chunk
+    if multi_segment_info:
+        n_segments = len(multi_segment_info.get("segments", []))
+        max_ctx = 30000
+        min_chunks_needed = n_segments + 3
+        chars_per_chunk = max(max_ctx // min_chunks_needed, 2000)
+    else:
+        max_ctx = 12000
+        chars_per_chunk = None
+    
+    context, _ = build_context(hits, max_chars=max_ctx, max_chars_per_chunk=chars_per_chunk)
 
     ql = (query or "").lower()
-    is_comparative = any(k in ql for k in [" vs ", " versus", "compar", "octubre", "septiembre", "moM", "mom"])
     
-    focused_segment = None
-    for seg in ["empresas", "corporate", "institucional", "minorista", "banca", "bind"]:
-        if seg in ql:
-            focused_segment = seg
-            break
-
-    mode = "comparative" if (is_comparative and focused_segment is None) else "focused"
+    # ================================================================
+    # Detección de modo
+    # ================================================================
+    if multi_segment_info:
+        # NUEVO: modo multi-segmento, siempre que haya info de multi-segmento
+        mode = "multi_segment"
+    else:
+        # Lógica existente sin cambios
+        is_comparative = any(k in ql for k in [" vs ", " versus", "compar", "octubre", "septiembre", "moM", "mom"])
+        focused_segment = None
+        for seg in ["empresas", "corporate", "institucional", "minorista", "baas", "banca"]:
+            if seg in ql:
+                focused_segment = seg
+                break
+        mode = "comparative" if (is_comparative and focused_segment is None) else "focused"
 
     # Obtener contextos adicionales
     evidence_text = " ".join(
@@ -264,6 +379,58 @@ def answer_from_evidence(query: str, hits: List[Dict[str, Any]], evidence: Dict[
         "- Cada bullet termina con citas [S#].\n"
     )
 
+    # ================================================================
+    # NUEVO: Formato multi-segmento con mapa de aliases
+    # ================================================================
+    multi_segment_format = ""
+    if multi_segment_info:
+        segments = multi_segment_info.get("segments", [])
+        segment_list = ", ".join(segments)
+        
+        # Construir mapa de aliases
+        from bind_rag_agent.config import SEGMENT_ALIASES
+        alias_map = {}
+        for alias, canonical in SEGMENT_ALIASES.items():
+            if canonical in segments:
+                alias_map.setdefault(canonical, []).append(alias)
+        
+        alias_hints = []
+        for seg in segments:
+            aliases = alias_map.get(seg, [seg])
+            unique_aliases = sorted(set(a for a in aliases if a != seg))
+            if unique_aliases:
+                alias_hints.append(f"'{seg}' (variantes: {', '.join(unique_aliases)})")
+            else:
+                alias_hints.append(f"'{seg}'")
+        
+        alias_text = "\n".join(f"   - {h}" for h in alias_hints)
+        
+        multi_segment_format = (
+            f"FORMATO OBLIGATORIO (MODO MULTI-SEGMENTO):\n"
+            f"La pregunta pide información de CADA UNO de estos segmentos: [{segment_list}].\n\n"
+            f"MAPA DE SEGMENTOS — busca estas variantes en el CONTEXTO:\n"
+            f"{alias_text}\n\n"
+            f"1) ONE-LINER (1 frase): responde directo qué métrica y período se muestra.\n"
+            f"2) DETALLE POR SEGMENTO — incluye CADA segmento que tenga datos:\n"
+            f"   - Segmento: valor [S#]\n"
+            f"   Repite para CADA segmento del que tengas datos.\n"
+            f"3) Si algún segmento NO tiene datos disponibles, menciónalo explícitamente.\n"
+            f"4) LECTURA RÁPIDA (1 frase): síntesis general.\n\n"
+            f"REGLA CRÍTICA: NO respondas solo con un par de segmentos. Tu respuesta está INCOMPLETA\n"
+            f"si no incluyes datos de todos los segmentos disponibles en el CONTEXTO.\n"
+            f"INSTRUCCIÓN: Revisa CADA chunk [S1] a [S{len(hits)}]. Cada página del Directorio\n"
+            f"suele contener datos de UN segmento distinto. Busca en TODAS las páginas antes de\n"
+            f"declarar que un segmento no tiene datos.\n"
+        )
+
+    # Seleccionar formato según modo
+    if mode == "multi_segment":
+        format_block = multi_segment_format
+    elif mode == "comparative":
+        format_block = comparative_format
+    else:
+        format_block = focused_format
+
     gloss = glossary_snippet(query)
 
     user = (
@@ -273,7 +440,7 @@ def answer_from_evidence(query: str, hits: List[Dict[str, Any]], evidence: Dict[
         f"{business_rules}\n\n"
         f"EVIDENCE (JSON):\n{json.dumps(evidence, ensure_ascii=False)}\n\n"
         f"CONTEXTO:\n{context}\n\n"
-        f"{comparative_format if mode == 'comparative' else focused_format}"
+        f"{format_block}"
         "\nREGLAS CRÍTICAS:\n"
         "- Si evidence.answerable es false: responde 'No encuentro esa información.'\n"
         "- Si evidence.answerable es true: extrae el valor de la entidad preguntada.\n"
@@ -288,9 +455,12 @@ def answer_from_evidence(query: str, hits: List[Dict[str, Any]], evidence: Dict[
         "usa SOLO el valor de la FUENTE PRIMARIA. No menciones el dato duplicado de la fuente secundaria.\n"
     )
 
+    # Para multi-segmento, más tokens para la respuesta completa
+    max_tok = 1200 if multi_segment_info else 700
+
     return call_chat(
         endpoint=LLM_ENDPOINT,
         messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
         temperature=0.05,
-        max_tokens=700
+        max_tokens=max_tok
     )

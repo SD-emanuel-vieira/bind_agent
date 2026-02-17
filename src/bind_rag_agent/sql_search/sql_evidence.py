@@ -99,21 +99,6 @@ def extract_chat_content(resp) -> str:
 
     return str(resp)
 
-# class TimeoutError(Exception):
-#     pass
-
-# @contextmanager
-# def timeout(seconds: int):
-#     def handler(signum, frame):
-#         raise TimeoutError(f"Operación excedió {seconds} segundos")
-    
-#     old_handler = signal.signal(signal.SIGALRM, handler)
-#     signal.alarm(seconds)
-#     try:
-#         yield
-#     finally:
-#         signal.alarm(0)
-#         signal.signal(signal.SIGALRM, old_handler)
 
 def call_llm(endpoint: str, messages: List[Dict[str, str]], temperature: float = 0.2, max_tokens: int = 500) -> str:
     payload = {'messages': messages, 'temperature': temperature, 'max_tokens': max_tokens}

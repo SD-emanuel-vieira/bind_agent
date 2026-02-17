@@ -1,22 +1,23 @@
 import mlflow.deployments
 import re
 import unicodedata
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 
 from bind_rag_agent.config import TOP_K_CANDIDATES, TOP_K_FINAL, MAX_CONTEXT_CHARS
 from bind_rag_agent.text_utils import drop_segment_topics_if_query_general
-from bind_rag_agent.vector_search.retriever import retrieve_candidates
-from bind_rag_agent.vector_search.rerank import tie_break_by_date_in_blocks,enforce_anchor_priority,rerank_with_llm,trace_stage
+from bind_rag_agent.vector_search.retriever import retrieve_candidates, decompose_multi_segment_query
+from bind_rag_agent.vector_search.rerank import (
+    tie_break_by_date_in_blocks,
+    enforce_anchor_priority,
+    rerank_with_llm,
+    trace_stage,
+    sort_by_source_and_date,
+)
 from bind_rag_agent.vector_search.glossary_helper import prepare_rerank_candidates_glossary_aware
 from bind_rag_agent.vector_search.evidence_handling import build_context, extract_evidence, answer_from_evidence
 from bind_rag_agent.sql_search.sql_evidence import answer_sql, get_sql_evidence, is_evidence_usable, build_sql_response
 from bind_rag_agent.sql_search.smart_routing import validate_and_route, should_try_sql
 
-# print("Config OK")
-# print("VS endpoint:", VS_ENDPOINT)
-# print("VS index:", VS_INDEX_FULL_NAME)
-# print("Embedding endpoint:", EMBED_ENDPOINT)
-# print("LLM endpoint:", LLM_ENDPOINT)
 
 # -------------------------
 # Orchestrator (end-to-end RAG)
@@ -57,6 +58,15 @@ def answer_with_rag(query: str) -> Dict[str, Any]:
     # FLUJO RAG NORMAL (cuando SQL no tiene respuesta)
     # =========================================================================
     
+    # =====================================================================
+    # NUEVO: Detectar si es query multi-segmento ANTES del retrieval
+    # Esto se usa para:
+    #   1. El retrieval ya lo detecta internamente (decompose_multi_segment_query)
+    #   2. El sort por fuente+fecha (paso 3.5)
+    #   3. Las funciones de evidencia/respuesta (prompts multi-evidencia)
+    # =====================================================================
+    multi_segment_info = decompose_multi_segment_query(query)
+    
     # Posibles candidatos para la respuesta, se filtran por lexical_fallback (importante) y chunk_type:
     candidates = retrieve_candidates(query, k=TOP_K_CANDIDATES) or [] 
     trace_stage("1) retrieve_candidates", query, candidates)
@@ -74,20 +84,47 @@ def answer_with_rag(query: str) -> Dict[str, Any]:
     hits_for_rerank = prepare_rerank_candidates_glossary_aware(query, candidates, max_input=TOP_K_RERANK_INPUT) 
     trace_stage(f"3) prepare_rerank_candidates_glossary_aware(max_input={TOP_K_RERANK_INPUT})", query, hits_for_rerank)
 
+    # =====================================================================
+    # NUEVO (paso 3.5): Sort por prioridad de fuente + fecha
+    # Para queries multi-segmento donde todos los scores están empatados,
+    # esto agrupa las páginas del Directorio más reciente primero.
+    # Para queries normales, solo actúa como tiebreaker (no rompe nada).
+    # =====================================================================
+    if multi_segment_info:
+        hits_for_rerank = sort_by_source_and_date(hits_for_rerank)
+        trace_stage("3.5) sort_by_source_and_date (multi-segment)", query, hits_for_rerank)
+
     # Tie-break SOLO para empates (por file_date) — al final del pre-rerank
     hits_for_rerank_tiebroken = tie_break_by_date_in_blocks(hits_for_rerank, block_size=2)
     trace_stage("4) tie_break_by_date_in_blocks(block_size=2)", query, hits_for_rerank_tiebroken)
 
     # Reranking en base a las reglas definidas:
-    top_hits = rerank_with_llm(query, hits_for_rerank_tiebroken, top_k=TOP_K_FINAL) or candidates[:TOP_K_FINAL] 
-    trace_stage(f"5) rerank_with_llm(top_k={TOP_K_FINAL})", query, top_hits)
+    # Para multi-segmento, pedimos más hits al reranker porque necesitamos
+    # cubrir N segmentos × ~2 páginas cada uno (ej: 6 segmentos → ~12 hits)
+    rerank_k = TOP_K_FINAL + len(multi_segment_info.get("segments", [])) if multi_segment_info else TOP_K_FINAL
+    top_hits = rerank_with_llm(query, hits_for_rerank_tiebroken, top_k=rerank_k) or candidates[:rerank_k] 
+    trace_stage(f"5) rerank_with_llm(top_k={rerank_k})", query, top_hits)
+
+    # =====================================================================
+    # NUEVO (paso 5.5): Re-sort POST-reranker para multi-segmento
+    # Usa group_by_document=True para agrupar TODAS las páginas del mismo
+    # documento juntas (ej: p24,p25,p26,p27,p28 del Directorio Nov18),
+    # independientemente de diferencias menores de score.
+    # Esto resuelve el problema de que p26 (score=9) caía al final
+    # separada de sus páginas hermanas (score=11).
+    # =====================================================================
+    if multi_segment_info:
+        top_hits = sort_by_source_and_date(top_hits, group_by_document=True)
+        trace_stage("5.5) sort_by_source_and_date (post-rerank, grouped)", query, top_hits)
 
     # Se construye la evidencia:
-    evidence = extract_evidence(query, top_hits)
+    # NUEVO: Pasa multi_segment_info para ajustar prompts cuando hay multi-segmento
+    evidence = extract_evidence(query, top_hits, multi_segment_info=multi_segment_info)
     print("Se armó la evidencia")
     
     # Se arma la respuesta final:
-    answer = answer_from_evidence(query, top_hits, evidence)
+    # NUEVO: Pasa multi_segment_info para forzar modo multi-evidencia
+    answer = answer_from_evidence(query, top_hits, evidence, multi_segment_info=multi_segment_info)
     print("Se armó la respuesta")
     
     # Se construye el contexto:
@@ -102,4 +139,5 @@ def answer_with_rag(query: str) -> Dict[str, Any]:
         "retrieved_candidates": candidates,
         "reranked_hits": top_hits,
         "response_source": "vector_rag",  # Indicador de origen
+        "multi_segment": bool(multi_segment_info),  # NUEVO: flag para debug
     }

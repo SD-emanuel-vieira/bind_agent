@@ -34,7 +34,7 @@ BUSINESS_RULES: Dict[str, Dict] = {
         "definicion": "Resultado de las operaciones del negocio antes de impuestos y ajustes. Es el resultado antes de impuestos. Es la suma de Ingresos y Gastos en el P&L (los gastos ya vienen con signo negativo).",
         "formula": "Resultado Operativo = Ingresos + Gastos",
         "componentes": ["Ingresos", "Gastos"],
-        "aliases": ["resultado operativo", "rdo operativo", "operating result", "utilidad operativa"],
+        "aliases": ["resultado operativo", "rdo operativo", "resultado operativo - sin marcado fondo", "operating result", "utilidad operativa"],
         "notas": [
             "En el P&L los Gastos aparecen con signo negativo, por eso la fórmula es una suma",
             "Es el resultado antes de impuestos",
