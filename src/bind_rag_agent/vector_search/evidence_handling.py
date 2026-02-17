@@ -4,7 +4,25 @@ import time
 from typing import Any, Dict, List, Optional, Tuple
 import os
 import requests
-from bind_rag_agent.config import *
+from bind_rag_agent.config import (
+    MAX_CONTEXT_CHARS,
+    MAX_CONTEXT_CHARS_MULTI_SEGMENT,
+    MAX_CONTEXT_CHARS_NORMAL,
+    MIN_CHARS_PER_CHUNK,
+    MAX_TOKENS_EVIDENCE_MULTI,
+    MAX_TOKENS_EVIDENCE_NORMAL,
+    MAX_TOKENS_ANSWER_MULTI,
+    MAX_TOKENS_ANSWER_NORMAL,
+    TEMPERATURE_EVIDENCE,
+    TEMPERATURE_ANSWER_GENERATION,
+    EVIDENCE_LIMIT_MULTI,
+    EVIDENCE_LIMIT_NORMAL,
+    KEY_POINTS_LIMIT_MULTI,
+    KEY_POINTS_LIMIT_NORMAL,
+    LLM_ENDPOINT,
+    SEGMENT_ALIASES,
+    SEGMENTS,
+)
 from bind_rag_agent.text_utils import *
 from bind_rag_agent.vector_search.llm import call_chat
 from bind_rag_agent.vector_search.glossary_helper import glossary_snippet
@@ -147,12 +165,12 @@ def extract_evidence(
     # para garantizar que TODOS los segmentos quepan en el contexto
     if multi_segment_info:
         n_segments = len(multi_segment_info.get("segments", []))
-        max_ctx = 30000
+        max_ctx = MAX_CONTEXT_CHARS_MULTI_SEGMENT
         # Presupuesto por chunk: garantiza que al menos n_segments + 3 chunks quepan
         min_chunks_needed = n_segments + 3
-        chars_per_chunk = max(max_ctx // min_chunks_needed, 2000)
+        chars_per_chunk = max(max_ctx // min_chunks_needed, MIN_CHARS_PER_CHUNK)
     else:
-        max_ctx = 12000
+        max_ctx = MAX_CONTEXT_CHARS_NORMAL
         chars_per_chunk = None  # sin límite por chunk → comportamiento original
     
     context, _ = build_context(hits, max_chars=max_ctx, max_chars_per_chunk=chars_per_chunk)
@@ -172,7 +190,6 @@ def extract_evidence(
         segment_list = ", ".join(segments)
         
         # Construir mapa de aliases para que el LLM sepa cómo buscar cada segmento
-        from bind_rag_agent.config import SEGMENT_ALIASES
         alias_map = {}
         for alias, canonical in SEGMENT_ALIASES.items():
             if canonical in segments:
@@ -238,12 +255,12 @@ def extract_evidence(
     )
 
     # Para multi-segmento, más tokens para cubrir todos los segmentos
-    max_tok = 1500 if multi_segment_info else 800
+    max_tok = MAX_TOKENS_EVIDENCE_MULTI if multi_segment_info else MAX_TOKENS_EVIDENCE_NORMAL
 
     raw = call_chat(
         endpoint=LLM_ENDPOINT,
         messages=[{"role":"system","content":system},{"role":"user","content":user}],
-        temperature=0.0,
+        temperature=TEMPERATURE_EVIDENCE,
         max_tokens=max_tok
     )
     parsed = safe_json_load(raw) or {"answerable": False, "missing": ["No se pudo parsear evidencia"], "key_points": [], "evidence": []}
@@ -255,8 +272,8 @@ def extract_evidence(
     parsed.setdefault("evidence", [])
 
     # Límites ajustados para multi-segmento
-    ev_limit = 12 if multi_segment_info else 6
-    kp_limit = 12 if multi_segment_info else 6
+    ev_limit = EVIDENCE_LIMIT_MULTI if multi_segment_info else EVIDENCE_LIMIT_NORMAL
+    kp_limit = KEY_POINTS_LIMIT_MULTI if multi_segment_info else KEY_POINTS_LIMIT_NORMAL
 
     # Dedup evidence by (sid, quote)
     seen_ev = set()
@@ -304,11 +321,11 @@ def answer_from_evidence(
     # Para multi-segmento, más contexto con límite por chunk
     if multi_segment_info:
         n_segments = len(multi_segment_info.get("segments", []))
-        max_ctx = 30000
+        max_ctx = MAX_CONTEXT_CHARS_MULTI_SEGMENT
         min_chunks_needed = n_segments + 3
-        chars_per_chunk = max(max_ctx // min_chunks_needed, 2000)
+        chars_per_chunk = max(max_ctx // min_chunks_needed, MIN_CHARS_PER_CHUNK)
     else:
-        max_ctx = 12000
+        max_ctx = MAX_CONTEXT_CHARS_NORMAL
         chars_per_chunk = None
     
     context, _ = build_context(hits, max_chars=max_ctx, max_chars_per_chunk=chars_per_chunk)
@@ -325,7 +342,7 @@ def answer_from_evidence(
         # Lógica existente sin cambios
         is_comparative = any(k in ql for k in [" vs ", " versus", "compar", "octubre", "septiembre", "moM", "mom"])
         focused_segment = None
-        for seg in ["empresas", "corporate", "institucional", "minorista", "baas", "banca"]:
+        for seg in SEGMENTS:
             if seg in ql:
                 focused_segment = seg
                 break
@@ -388,7 +405,6 @@ def answer_from_evidence(
         segment_list = ", ".join(segments)
         
         # Construir mapa de aliases
-        from bind_rag_agent.config import SEGMENT_ALIASES
         alias_map = {}
         for alias, canonical in SEGMENT_ALIASES.items():
             if canonical in segments:
@@ -456,11 +472,11 @@ def answer_from_evidence(
     )
 
     # Para multi-segmento, más tokens para la respuesta completa
-    max_tok = 1200 if multi_segment_info else 700
+    max_tok = MAX_TOKENS_ANSWER_MULTI if multi_segment_info else MAX_TOKENS_ANSWER_NORMAL
 
     return call_chat(
         endpoint=LLM_ENDPOINT,
         messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
-        temperature=0.05,
+        temperature=TEMPERATURE_ANSWER_GENERATION,
         max_tokens=max_tok
     )

@@ -8,7 +8,12 @@ import mlflow.deployments
 import signal
 from contextlib import contextmanager
 from bind_rag_agent.text_utils import extract_chat_content
-from bind_rag_agent.config import *
+from bind_rag_agent.config import (
+    LLM_ENDPOINT,
+    LLM_CALL_TIMEOUT_SECS,
+    TEMPERATURE_EVIDENCE,
+    MAX_TOKENS_QUERY_EXPANSION,
+)
 
 class TimeoutError(Exception):
     pass
@@ -27,7 +32,7 @@ def timeout(seconds: int):
         signal.signal(signal.SIGALRM, old_handler)
 
 # LLM call to chat
-def call_chat(endpoint: str, messages: List[Dict[str, str]], temperature: float, max_tokens: int, timeout_seconds: int = 30) -> str:
+def call_chat(endpoint: str, messages: List[Dict[str, str]], temperature: float, max_tokens: int, timeout_seconds: int = LLM_CALL_TIMEOUT_SECS) -> str:
     with timeout(timeout_seconds):
         payload = {"messages": messages, "temperature": temperature, "max_tokens": max_tokens}
         client = mlflow.deployments.get_deploy_client("databricks")
@@ -56,6 +61,6 @@ def expand_query_for_retrieval(query: str) -> str:
     return call_chat(
         endpoint=LLM_ENDPOINT,
         messages=[{"role":"system","content":system},{"role":"user","content":user}],
-        temperature=0.0,
-        max_tokens=120
+        temperature=TEMPERATURE_EVIDENCE,
+        max_tokens=MAX_TOKENS_QUERY_EXPANSION
     ).strip()

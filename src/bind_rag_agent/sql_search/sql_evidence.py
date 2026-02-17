@@ -7,7 +7,14 @@ from typing import List, Dict, Any
 from contextlib import contextmanager
 from pyspark.sql import SparkSession
 import time
-from bind_rag_agent.config import TABLE_, LLM_ENDPOINT_SQL
+from bind_rag_agent.config import (
+    TABLE_, 
+    LLM_ENDPOINT_SQL,
+    SQL_RESULT_LIMIT,
+    SQL_TEMPERATURE,
+    SQL_MAX_TOKENS,
+    SCHEMA_CACHE_TTL,
+)
 
 # Obtener la sesión de Spark activa
 spark = SparkSession.builder.getOrCreate()
@@ -46,7 +53,6 @@ def schema_text(table: str) -> str:
     return "\n".join([f"- {f.name}: {f.dataType.simpleString()}" for f in fields])
 
 _SCHEMA_CACHE = {"text": None, "timestamp": 0}
-SCHEMA_CACHE_TTL = 3600  # 1 hora
 
 def get_schema_text() -> str:
     global _SCHEMA_CACHE
@@ -58,11 +64,11 @@ def get_schema_text() -> str:
     
     return _SCHEMA_CACHE["text"]
 
-def sql_tool(sql: str, n: int = 20) -> str:
+def sql_tool(sql: str, n: int = SQL_RESULT_LIMIT) -> str:
     df = spark.sql(sql)
     return df.limit(n).toPandas().to_string(index=False)
 
-def run_sql_preview(sql: str, n: int = 20) -> dict:
+def run_sql_preview(sql: str, n: int = SQL_RESULT_LIMIT) -> dict:
     """Ejecuta SQL y retorna resultado con metadata. Suprime logs de error."""
     with suppress_spark_errors():
         try:
@@ -100,7 +106,7 @@ def extract_chat_content(resp) -> str:
     return str(resp)
 
 
-def call_llm(endpoint: str, messages: List[Dict[str, str]], temperature: float = 0.2, max_tokens: int = 500) -> str:
+def call_llm(endpoint: str, messages: List[Dict[str, str]], temperature: float = SQL_TEMPERATURE, max_tokens: int = SQL_MAX_TOKENS) -> str:
     payload = {'messages': messages, 'temperature': temperature, 'max_tokens': max_tokens}
     client = get_deploy_client('databricks')
     resp = client.predict(endpoint=endpoint, inputs=payload)
@@ -111,7 +117,7 @@ def call_llm_simple(system_prompt: str, user_prompt: str) -> str:
         {'role': 'system', 'content': system_prompt},
         {'role': 'user', 'content': user_prompt},
     ]
-    return call_llm(LLM_ENDPOINT_SQL, messages, temperature=0.2, max_tokens=500)
+    return call_llm(LLM_ENDPOINT_SQL, messages, temperature=SQL_TEMPERATURE, max_tokens=SQL_MAX_TOKENS)
 
 def clean_sql(sql: str) -> str:
     s = sql.strip()
@@ -129,7 +135,7 @@ def clean_sql(sql: str) -> str:
 
     return s
 
-def enforce_limit(sql: str, n: int = 20) -> str:
+def enforce_limit(sql: str, n: int = SQL_RESULT_LIMIT) -> str:
     s = sql.strip().rstrip(';')
     if 'limit' not in s.lower():
         return s + f'\nLIMIT {n}'
@@ -182,7 +188,7 @@ def text_to_sql(question: str, table: str, schema_txt: str) -> str:
 
     raw = call_llm_simple(system, user)   
     sql = clean_sql(raw)
-    sql = enforce_limit(sql, 20)                  
+    sql = enforce_limit(sql, SQL_RESULT_LIMIT)                  
     validate_sql(sql, table)
     return sql
 
@@ -230,7 +236,7 @@ def get_sql_evidence(question: str) -> Dict[str, Any]:
         return result
     
     # Paso 2: Ejecutar SQL (con logs suprimidos)
-    r = run_sql_preview(sql, n=20)
+    r = run_sql_preview(sql, n=SQL_RESULT_LIMIT)
     
     if not r['ok']:
         result["error_type"] = "sql_execution"
@@ -314,7 +320,7 @@ def answer_sql(question: str) -> str:
     print(sql)
     print('------------------')
 
-    r = run_sql_preview(sql, n=20)
+    r = run_sql_preview(sql, n=SQL_RESULT_LIMIT)
     if not r['ok']:
         return f'No pude ejecutar la SQL generada.\nError: {r["error"]}\nSQL:\n{sql}'
 

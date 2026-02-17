@@ -76,3 +76,60 @@ SEGMENT_ALIASES = {
     "pyme": "pyme",
     "pymes": "pyme",
 }
+
+# ====================================================================
+# CONTEXT LIMITS (evidence + answer)
+# ====================================================================
+MAX_CONTEXT_CHARS_MULTI_SEGMENT = int(_get_env("RAG_MAX_CONTEXT_CHARS_MULTI", "30000"))
+MAX_CONTEXT_CHARS_NORMAL        = MAX_CONTEXT_CHARS  # reutiliza la existente
+MIN_CHARS_PER_CHUNK             = int(_get_env("RAG_MIN_CHARS_PER_CHUNK", "2000"))
+
+# ====================================================================
+# TOKEN LIMITS POR FUNCIÓN LLM
+# ====================================================================
+MAX_TOKENS_EVIDENCE_MULTI  = int(_get_env("RAG_MAX_TOKENS_EVIDENCE_MULTI", "1500"))
+MAX_TOKENS_EVIDENCE_NORMAL = int(_get_env("RAG_MAX_TOKENS_EVIDENCE_NORMAL", "800"))
+MAX_TOKENS_ANSWER_MULTI    = int(_get_env("RAG_MAX_TOKENS_ANSWER_MULTI", "1200"))
+MAX_TOKENS_ANSWER_NORMAL   = int(_get_env("RAG_MAX_TOKENS_ANSWER_NORMAL", "700"))
+MAX_TOKENS_RERANK          = int(_get_env("RAG_MAX_TOKENS_RERANK", "650"))
+MAX_TOKENS_QUERY_EXPANSION = int(_get_env("RAG_MAX_TOKENS_QUERY_EXPANSION", "120"))
+
+# ====================================================================
+# TEMPERATURAS ESPECÍFICAS
+# ====================================================================
+TEMPERATURE_EVIDENCE          = float(_get_env("RAG_TEMPERATURE_EVIDENCE", "0.0"))
+TEMPERATURE_ANSWER_GENERATION = float(_get_env("RAG_TEMPERATURE_ANSWER_GENERATION", "0.05"))
+
+# ====================================================================
+# EVIDENCE POST-PROCESSING LIMITS
+# ====================================================================
+EVIDENCE_LIMIT_MULTI    = int(_get_env("RAG_EVIDENCE_LIMIT_MULTI", "12"))
+EVIDENCE_LIMIT_NORMAL   = int(_get_env("RAG_EVIDENCE_LIMIT_NORMAL", "6"))
+KEY_POINTS_LIMIT_MULTI  = int(_get_env("RAG_KEY_POINTS_LIMIT_MULTI", "12"))
+KEY_POINTS_LIMIT_NORMAL = int(_get_env("RAG_KEY_POINTS_LIMIT_NORMAL", "6"))
+
+# ====================================================================
+# RERANK PARAMS
+# ====================================================================
+RERANK_TIE_BREAK_BLOCK_SIZE = int(_get_env("RAG_RERANK_TIE_BREAK_BLOCK", "2"))
+ANCHOR_PROTECTION_RATIO     = float(_get_env("RAG_ANCHOR_PROTECTION_RATIO", "0.8"))
+SOURCE_PRIORITY_DEFAULT     = int(_get_env("RAG_SOURCE_PRIORITY_DEFAULT", "9"))
+TRACE_DEFAULT_TOP           = int(_get_env("RAG_TRACE_DEFAULT_TOP", "12"))
+RERANK_INPUT_MULTIPLIER     = int(_get_env("RAG_RERANK_INPUT_MULTIPLIER", "3"))
+RERANK_INPUT_OFFSET         = int(_get_env("RAG_RERANK_INPUT_OFFSET", "12"))
+
+# ====================================================================
+# RETRIEVER
+# ====================================================================
+VS_FULL_TEXT_MAX_RESULTS = int(_get_env("RAG_VS_FULL_TEXT_MAX_RESULTS", "200"))
+VS_REQUEST_TIMEOUT_SECS  = int(_get_env("RAG_VS_REQUEST_TIMEOUT_SECS", "15"))
+HYDRATION_MAX_IDS        = int(_get_env("RAG_HYDRATION_MAX_IDS", "500"))
+LLM_CALL_TIMEOUT_SECS    = int(_get_env("RAG_LLM_CALL_TIMEOUT_SECS", "30"))
+
+# ====================================================================
+# SQL PARAMS
+# ====================================================================
+SQL_RESULT_LIMIT  = int(_get_env("RAG_SQL_RESULT_LIMIT", "20"))
+SQL_TEMPERATURE   = float(_get_env("RAG_SQL_TEMPERATURE", "0.2"))
+SQL_MAX_TOKENS    = int(_get_env("RAG_SQL_MAX_TOKENS", "500"))
+SCHEMA_CACHE_TTL  = int(_get_env("RAG_SCHEMA_CACHE_TTL", "3600"))

@@ -25,6 +25,11 @@ from bind_rag_agent.config import (
     RERANK_SNIPPET_CHARS,
     TEMPERATURE_RERANK,
     LLM_ENDPOINT,
+    MAX_TOKENS_RERANK,
+    RERANK_TIE_BREAK_BLOCK_SIZE,
+    ANCHOR_PROTECTION_RATIO,
+    SOURCE_PRIORITY_DEFAULT,
+    TRACE_DEFAULT_TOP,
 )
 from bind_rag_agent.text_utils import safe_json_load, shorten
 from bind_rag_agent.vector_search.llm import call_chat
@@ -47,7 +52,7 @@ from bind_rag_agent.vector_search.glossary_helper import (
 
 def tie_break_by_date_in_blocks(
     hits: List[Dict[str, Any]], 
-    block_size: int = 2
+    block_size: int = RERANK_TIE_BREAK_BLOCK_SIZE
 ) -> List[Dict[str, Any]]:
     """
     Desempata hits dentro de bloques por fecha de archivo.
@@ -82,7 +87,7 @@ _SOURCE_PRIORITY = {
     "directorio": 0,   # Directorio BIND Banco → máxima prioridad
     "cdg": 1,           # CdG (Comité de Gestión)
 }
-_SOURCE_PRIORITY_DEFAULT = 9  # Otros archivos
+_SOURCE_PRIORITY_DEFAULT = SOURCE_PRIORITY_DEFAULT  # Otros archivos
 
 
 def _get_source_priority(hit: Dict[str, Any]) -> int:
@@ -237,8 +242,8 @@ def rerank_with_llm(
     # ============================================================
     max_anchor = max((h.get("_anchor_score", 0) for h in hits), default=0)
     
-    # Umbral: chunks con score >= 80% del máximo están protegidos
-    protection_threshold = max(1, int(max_anchor * 0.8)) if max_anchor >= 1 else 0
+    # Umbral: chunks con score >= ANCHOR_PROTECTION_RATIO del máximo están protegidos
+    protection_threshold = max(1, int(max_anchor * ANCHOR_PROTECTION_RATIO)) if max_anchor >= 1 else 0
 
     # Identificar hits protegidos
     protected_hits = [
@@ -297,7 +302,7 @@ def rerank_with_llm(
             {"role": "user", "content": "\n".join(user_lines)}
         ],
         temperature=TEMPERATURE_RERANK,
-        max_tokens=650
+        max_tokens=MAX_TOKENS_RERANK
     )
 
     parsed = safe_json_load(content)
@@ -419,7 +424,7 @@ def trace_stage(
     stage: str, 
     query: str, 
     hits: List[Dict[str, Any]], 
-    top: int = 12
+    top: int = TRACE_DEFAULT_TOP
 ) -> None:
     """
     Tracer resumido para debuggear orden de hits en cada etapa.

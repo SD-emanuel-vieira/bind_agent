@@ -18,6 +18,9 @@ from bind_rag_agent.config import (
     CHUNK_TYPE_QUERY_GATES,
     SEGMENT_ALIASES,
     CANONICAL_SEGMENTS,
+    HYDRATION_MAX_IDS,
+    VS_FULL_TEXT_MAX_RESULTS,
+    VS_REQUEST_TIMEOUT_SECS,
 )
 from bind_rag_agent.text_utils import (
     parse_vs_similarity_response, 
@@ -237,7 +240,7 @@ def _hydrate_metadata_enrich_from_table(hits: List[Dict[str, Any]]) -> List[Dict
     
     try:
         # Limitar tamaño del IN para evitar queries enormes
-        max_ids = 500
+        max_ids = HYDRATION_MAX_IDS
         ids_slice = missing_ids[:max_ids]
         quoted_ids = ",".join("'" + cid.replace("'", "''") + "'" for cid in ids_slice)
         
@@ -345,7 +348,7 @@ def _vs_full_text_query(
         "query_text": query_text,
         "query_type": "FULL_TEXT",
         "columns": columns,
-        "num_results": min(int(num_results), 200),
+        "num_results": min(int(num_results), VS_FULL_TEXT_MAX_RESULTS),
     }
     if filters is not None:
         payload["filters"] = filters
@@ -354,7 +357,7 @@ def _vs_full_text_query(
         url,
         headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
         json=payload,
-        timeout=15,
+        timeout=VS_REQUEST_TIMEOUT_SECS,
     )
     resp.raise_for_status()
     data = resp.json()

@@ -3,7 +3,14 @@ import re
 import unicodedata
 from typing import Dict, Any, List, Optional
 
-from bind_rag_agent.config import TOP_K_CANDIDATES, TOP_K_FINAL, MAX_CONTEXT_CHARS
+from bind_rag_agent.config import (
+    TOP_K_CANDIDATES, 
+    TOP_K_FINAL, 
+    MAX_CONTEXT_CHARS,
+    RERANK_INPUT_MULTIPLIER,
+    RERANK_INPUT_OFFSET,
+    RERANK_TIE_BREAK_BLOCK_SIZE,
+)
 from bind_rag_agent.text_utils import drop_segment_topics_if_query_general
 from bind_rag_agent.vector_search.retriever import retrieve_candidates, decompose_multi_segment_query
 from bind_rag_agent.vector_search.rerank import (
@@ -80,7 +87,7 @@ def answer_with_rag(query: str) -> Dict[str, Any]:
     trace_stage("2) enforce_anchor_priority", query, candidates_anchor_sorted)
 
     # Soft ordering #2: glossary-aware (estricto por frases)
-    TOP_K_RERANK_INPUT = max(TOP_K_FINAL * 3, TOP_K_FINAL + 12) 
+    TOP_K_RERANK_INPUT = max(TOP_K_FINAL * RERANK_INPUT_MULTIPLIER, TOP_K_FINAL + RERANK_INPUT_OFFSET) 
     hits_for_rerank = prepare_rerank_candidates_glossary_aware(query, candidates, max_input=TOP_K_RERANK_INPUT) 
     trace_stage(f"3) prepare_rerank_candidates_glossary_aware(max_input={TOP_K_RERANK_INPUT})", query, hits_for_rerank)
 
@@ -95,8 +102,8 @@ def answer_with_rag(query: str) -> Dict[str, Any]:
         trace_stage("3.5) sort_by_source_and_date (multi-segment)", query, hits_for_rerank)
 
     # Tie-break SOLO para empates (por file_date) — al final del pre-rerank
-    hits_for_rerank_tiebroken = tie_break_by_date_in_blocks(hits_for_rerank, block_size=2)
-    trace_stage("4) tie_break_by_date_in_blocks(block_size=2)", query, hits_for_rerank_tiebroken)
+    hits_for_rerank_tiebroken = tie_break_by_date_in_blocks(hits_for_rerank, block_size=RERANK_TIE_BREAK_BLOCK_SIZE)
+    trace_stage(f"4) tie_break_by_date_in_blocks(block_size={RERANK_TIE_BREAK_BLOCK_SIZE})", query, hits_for_rerank_tiebroken)
 
     # Reranking en base a las reglas definidas:
     # Para multi-segmento, pedimos más hits al reranker porque necesitamos
