@@ -8,6 +8,7 @@ import mlflow.deployments
 import signal
 from contextlib import contextmanager
 from bind_rag_agent.text_utils import extract_chat_content
+from bind_rag_agent.token_counter import token_counter
 from bind_rag_agent.config import (
     LLM_ENDPOINT,
     LLM_CALL_TIMEOUT_SECS,
@@ -37,6 +38,7 @@ def call_chat(endpoint: str, messages: List[Dict[str, str]], temperature: float,
         payload = {"messages": messages, "temperature": temperature, "max_tokens": max_tokens}
         client = mlflow.deployments.get_deploy_client("databricks")
         resp = client.predict(endpoint=endpoint, inputs=payload)
+        token_counter.add_from_response(resp)
         return extract_chat_content(resp)
 
 # -------------------------

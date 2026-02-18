@@ -24,12 +24,16 @@ from bind_rag_agent.vector_search.glossary_helper import prepare_rerank_candidat
 from bind_rag_agent.vector_search.evidence_handling import build_context, extract_evidence, answer_from_evidence
 from bind_rag_agent.sql_search.sql_evidence import answer_sql, get_sql_evidence, is_evidence_usable, build_sql_response
 from bind_rag_agent.sql_search.smart_routing import validate_and_route, should_try_sql
+from bind_rag_agent.token_counter import token_counter
 
 
 # -------------------------
 # Orchestrator (end-to-end RAG)
 # -------------------------
 def answer_with_rag(query: str) -> Dict[str, Any]:
+
+    # Reset token counter para esta ejecución
+    token_counter.reset()
 
     # =========================================================================
     # FLUJO SQL
@@ -59,7 +63,9 @@ def answer_with_rag(query: str) -> Dict[str, Any]:
     
     if sql_evidence and is_evidence_usable(sql_evidence):
         print(answer_sql(query)) # Solo DEBUG
-        return build_sql_response(query, sql_evidence)
+        result = build_sql_response(query, sql_evidence)
+        result.update(token_counter.get_totals())
+        return result
     
     # =========================================================================
     # FLUJO RAG NORMAL (cuando SQL no tiene respuesta)
@@ -147,4 +153,5 @@ def answer_with_rag(query: str) -> Dict[str, Any]:
         "reranked_hits": top_hits,
         "response_source": "vector_rag",  # Indicador de origen
         "multi_segment": bool(multi_segment_info),  # NUEVO: flag para debug
+        **token_counter.get_totals(),
     }

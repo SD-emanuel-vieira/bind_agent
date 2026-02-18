@@ -15,6 +15,7 @@ from bind_rag_agent.config import (
     SQL_MAX_TOKENS,
     SCHEMA_CACHE_TTL,
 )
+from bind_rag_agent.token_counter import token_counter
 
 _spark = None
 
@@ -114,6 +115,7 @@ def call_llm(endpoint: str, messages: List[Dict[str, str]], temperature: float =
     payload = {'messages': messages, 'temperature': temperature, 'max_tokens': max_tokens}
     client = get_deploy_client('databricks')
     resp = client.predict(endpoint=endpoint, inputs=payload)
+    token_counter.add_from_response(resp)
     return extract_chat_content(resp)
 
 def call_llm_simple(system_prompt: str, user_prompt: str) -> str:
