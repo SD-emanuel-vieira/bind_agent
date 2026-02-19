@@ -15,7 +15,7 @@ artifacts:
   rag_wheel:
     type: whl
     path: .
-    # Databricks CLI hace `pip wheel .` automáticamente
+    build: "pip wheel --no-deps -w dist ."
     
 # Variable declarations. These variables are assigned in the dev/prod targets below.
 variables:

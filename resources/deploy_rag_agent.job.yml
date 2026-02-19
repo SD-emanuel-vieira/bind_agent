@@ -30,7 +30,7 @@ resources:
           libraries:
             - whl: ../dist/*.whl    # o referencia al artifact
           notebook_task:
-            notebook_path: ../src/deploy_rag_agent.ipynb
+            notebook_path: ../src/notebooks/deploy_rag_agent.ipynb
             base_parameters:
             # Esto lo usamos para armar rutas al código deployado por el bundle
               BUNDLE_FILE_PATH: ${workspace.file_path}/src
