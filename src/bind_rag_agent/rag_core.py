@@ -24,6 +24,7 @@ from bind_rag_agent.vector_search.glossary_helper import prepare_rerank_candidat
 from bind_rag_agent.vector_search.evidence_handling import build_context, extract_evidence, answer_from_evidence
 from bind_rag_agent.sql_search.sql_evidence import answer_sql, get_sql_evidence, is_evidence_usable, build_sql_response
 from bind_rag_agent.sql_search.smart_routing import validate_and_route, should_try_sql
+from bind_rag_agent.sql_search.sql_trace import trace_sql
 from bind_rag_agent.token_counter import token_counter
 
 
@@ -42,31 +43,64 @@ def answer_with_rag(query: str) -> Dict[str, Any]:
     # Pre-validación: ¿vale la pena intentar SQL?
     try_sql, skip_reason = should_try_sql(query)
     
+    trace_sql(
+        "1) should_try_sql",
+        query=query,
+        extra={"try_sql": try_sql, "skip_reason": skip_reason},
+    )
+    
     sql_evidence = None
     
     if try_sql:
         sql_evidence = get_sql_evidence(query)
         
+        trace_sql(
+            "2) get_sql_evidence",
+            query=query,
+            sql=sql_evidence.get('query'),
+            sql_evidence=sql_evidence,
+        )
+        
         # Post-validación semántica
         if sql_evidence:
             routing = validate_and_route(
                 question=query,
-                sql_query=sql_evidence.get('query'),        # ← Cambiar a .get()
-                sql_result=sql_evidence.get('raw_data'),    # ← raw_data tiene los datos
-                sql_error=sql_evidence.get('error_message') # ← error_message tiene el error
+                sql_query=sql_evidence.get('query'),
+                sql_result=sql_evidence.get('raw_data'),
+                sql_error=sql_evidence.get('error_message')
+            )
+            
+            trace_sql(
+                "3) validate_and_route",
+                query=query,
+                routing=routing,
             )
             
             if not routing["use_sql"]:
                 sql_evidence = None
     else:
-        print(f"ℹ️ Saltando SQL: {skip_reason}")
+        trace_sql(
+            "1) should_try_sql → SKIP",
+            query=query,
+            skip_reason=skip_reason,
+        )
     
     if sql_evidence and is_evidence_usable(sql_evidence):
-        print(answer_sql(query)) # Solo DEBUG
+        trace_sql(
+            "4) SQL RESULT → Usando respuesta SQL",
+            query=query,
+            extra={"answer_preview": (sql_evidence.get("answer") or "")[:200]},
+        )
         result = build_sql_response(query, sql_evidence)
         result.update(token_counter.get_totals())
         return result
     
+    trace_sql(
+        "4) SQL RESULT → Fallback a vectorial",
+        query=query,
+        extra={"reason": "SQL no produjo evidencia usable" if try_sql else skip_reason},
+    )
+
     # =========================================================================
     # FLUJO RAG NORMAL (cuando SQL no tiene respuesta)
     # =========================================================================

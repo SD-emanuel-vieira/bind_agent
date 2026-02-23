@@ -54,7 +54,7 @@ def suppress_spark_errors():
 
 
 def schema_text(table: str) -> str:
-    fields = spark.table(table).schema.fields
+    fields = _get_spark().table(table).schema.fields
     return "\n".join([f"- {f.name}: {f.dataType.simpleString()}" for f in fields])
 
 _SCHEMA_CACHE = {"text": None, "timestamp": 0}
@@ -175,6 +175,15 @@ def text_to_sql(question: str, table: str, schema_txt: str) -> str:
 
         Esquema:
         {schema_txt}
+
+        MAPEO DE NEGOCIO (usar siempre estas equivalencias):
+        - "ingresos", "ingresos netos", "ingresos del cliente" → columna: resultado_neto
+        - "ingresos brutos" → columna: resultado_bruto
+        - "resultado neto", "res neto" → columna: resultado_neto
+        - "resultado bruto", "res bruto" → columna: resultado_bruto
+        Ejemplo:
+        Pregunta: "Dame los ingresos del cliente X para julio 2025"
+        SQL: SELECT moneda, SUM(resultado_neto_iibb) AS ingresos_netos FROM {table} WHERE contains(lower(cliente), lower('X')) AND year = 2025 AND month = 7 GROUP BY moneda
 
         Reglas ESTRICTAS:
         - Usá nombres exactos de columnas del esquema.
