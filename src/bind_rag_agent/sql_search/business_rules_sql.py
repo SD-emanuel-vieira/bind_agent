@@ -20,8 +20,18 @@ SQL_ALLOWED_DIMENSIONS = {
 
 # Alias comunes que los usuarios pueden usar
 METRIC_ALIASES = {
-    "resultado neto": ["resultado neto", "res neto", "ingresos netos", "ingresos del cliente", "ingresos netos del cliente"],
-    "resultado bruto": ["resultado bruto", "res bruto", "ingresos brutos del cliente"],
+    "resultado neto": ["resultado neto", "res neto", "ingresos netos", 
+                       "ingresos del cliente", "ingresos netos del cliente", "ingresos por cliente", "ingresos netos por cliente",
+                       "ingresos del producto", "ingresos netos del producto", "ingresos por producto", "ingresos netos por producto",
+                       "ingresos del subproducto", "ingresos netos del subproducto", "ingresos por subproducto", "ingresos netos por subproducto",
+                       "ingresos del oficial", "ingresos netos del oficial", "ingresos por oficial", "ingresos netos por oficial",
+                       ],
+    "resultado bruto": ["resultado bruto", "res bruto",
+                       "ingresos brutos del cliente", "ingresos brutos por cliente",
+                       "ingresos brutos del producto", "ingresos brutos por producto",
+                       "ingresos brutos del subproducto", "ingresos brutos por subproducto",
+                       "ingresos brutos del oficial", "ingresos brutos por oficial",
+                       ],
 }
 
 # Términos que SIEMPRE van a vector (nunca SQL)
@@ -34,6 +44,7 @@ VECTOR_ONLY_TERMS = [
     "tna", "tasa",
     "margen",
     # "ingresos", "gastos", #revisar
+    "gastos",
     "patrimonio",
     "axi", "ajuste",
     "waiver",

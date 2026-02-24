@@ -126,43 +126,27 @@ def answer_with_rag(query: str) -> Dict[str, Any]:
     candidates_anchor_sorted = enforce_anchor_priority(query, candidates)
     trace_stage("2) enforce_anchor_priority", query, candidates_anchor_sorted)
 
+    # # Soft ordering #2: DEBUG de fechas
+    candidates_anchor_sorted = sort_by_source_and_date(candidates_anchor_sorted, group_by_document=True)
+    trace_stage("2.5) sort_by_source_and_date (post-rerank, recency)", query, candidates_anchor_sorted)
+
     # Soft ordering #2: glossary-aware (estricto por frases)
     TOP_K_RERANK_INPUT = max(TOP_K_FINAL * RERANK_INPUT_MULTIPLIER, TOP_K_FINAL + RERANK_INPUT_OFFSET) 
     hits_for_rerank = prepare_rerank_candidates_glossary_aware(query, candidates, max_input=TOP_K_RERANK_INPUT) 
     trace_stage(f"3) prepare_rerank_candidates_glossary_aware(max_input={TOP_K_RERANK_INPUT})", query, hits_for_rerank)
 
-    # =====================================================================
-    # NUEVO (paso 3.5): Sort por prioridad de fuente + fecha
-    # Para queries multi-segmento donde todos los scores están empatados,
-    # esto agrupa las páginas del Directorio más reciente primero.
-    # Para queries normales, solo actúa como tiebreaker (no rompe nada).
-    # =====================================================================
-    if multi_segment_info:
-        hits_for_rerank = sort_by_source_and_date(hits_for_rerank)
-        trace_stage("3.5) sort_by_source_and_date (multi-segment)", query, hits_for_rerank)
-
-    # Tie-break SOLO para empates (por file_date) — al final del pre-rerank
-    hits_for_rerank_tiebroken = tie_break_by_date_in_blocks(hits_for_rerank, block_size=RERANK_TIE_BREAK_BLOCK_SIZE)
-    trace_stage(f"4) tie_break_by_date_in_blocks(block_size={RERANK_TIE_BREAK_BLOCK_SIZE})", query, hits_for_rerank_tiebroken)
-
     # Reranking en base a las reglas definidas:
     # Para multi-segmento, pedimos más hits al reranker porque necesitamos
     # cubrir N segmentos × ~2 páginas cada uno (ej: 6 segmentos → ~12 hits)
     rerank_k = TOP_K_FINAL + len(multi_segment_info.get("segments", [])) if multi_segment_info else TOP_K_FINAL
-    top_hits = rerank_with_llm(query, hits_for_rerank_tiebroken, top_k=rerank_k) or candidates[:rerank_k] 
-    trace_stage(f"5) rerank_with_llm(top_k={rerank_k})", query, top_hits)
+    top_hits_rerank = rerank_with_llm(query, hits_for_rerank, top_k=rerank_k) or candidates[:rerank_k] 
+    trace_stage(f"4) rerank_with_llm(top_k={rerank_k})", query, top_hits_rerank)
+
+    # # Tie-break SOLO para empates (por file_date) — al final del pre-rerank
+    top_hits = sort_by_source_and_date(top_hits_rerank, group_by_document=True)
+    trace_stage("4.5) sort_by_source_and_date (post-rerank, recency)", query, top_hits)
 
     # =====================================================================
-    # NUEVO (paso 5.5): Re-sort POST-reranker para multi-segmento
-    # Usa group_by_document=True para agrupar TODAS las páginas del mismo
-    # documento juntas (ej: p24,p25,p26,p27,p28 del Directorio Nov18),
-    # independientemente de diferencias menores de score.
-    # Esto resuelve el problema de que p26 (score=9) caía al final
-    # separada de sus páginas hermanas (score=11).
-    # =====================================================================
-    if multi_segment_info:
-        top_hits = sort_by_source_and_date(top_hits, group_by_document=True)
-        trace_stage("5.5) sort_by_source_and_date (post-rerank, grouped)", query, top_hits)
 
     # Se construye la evidencia:
     # NUEVO: Pasa multi_segment_info para ajustar prompts cuando hay multi-segmento
