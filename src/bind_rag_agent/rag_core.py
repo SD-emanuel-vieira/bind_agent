@@ -126,11 +126,10 @@ def answer_with_rag(query: str) -> Dict[str, Any]:
     candidates_anchor_sorted = enforce_anchor_priority(query, candidates)
     trace_stage("2) enforce_anchor_priority", query, candidates_anchor_sorted)
 
-    # # Soft ordering #2: DEBUG de fechas
-    candidates_anchor_sorted = sort_by_source_and_date(candidates_anchor_sorted, group_by_document=True)
-    trace_stage("2.5) sort_by_source_and_date (post-rerank, recency)", query, candidates_anchor_sorted)
-
     # Soft ordering #2: glossary-aware (estricto por frases)
+    # Esto es importante para evitar que el modelo se distraiga con frases que no son relevantes para la respuesta
+    # (glossary-aware es más estricto que enforce_anchor_priority)
+    # Se toman en cuenta las evidencias más recientes por archivo
     TOP_K_RERANK_INPUT = max(TOP_K_FINAL * RERANK_INPUT_MULTIPLIER, TOP_K_FINAL + RERANK_INPUT_OFFSET) 
     hits_for_rerank = prepare_rerank_candidates_glossary_aware(query, candidates, max_input=TOP_K_RERANK_INPUT) 
     trace_stage(f"3) prepare_rerank_candidates_glossary_aware(max_input={TOP_K_RERANK_INPUT})", query, hits_for_rerank)

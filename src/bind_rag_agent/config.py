@@ -117,6 +117,7 @@ SOURCE_PRIORITY_DEFAULT     = int(_get_env("RAG_SOURCE_PRIORITY_DEFAULT", "9"))
 TRACE_DEFAULT_TOP           = int(_get_env("RAG_TRACE_DEFAULT_TOP", "12"))
 RERANK_INPUT_MULTIPLIER     = int(_get_env("RAG_RERANK_INPUT_MULTIPLIER", "3"))
 RERANK_INPUT_OFFSET         = int(_get_env("RAG_RERANK_INPUT_OFFSET", "12"))
+RECENCY_RATIO               = float(_get_env("RAG_RECENCY_RATIO", "0.60"))
 
 # ====================================================================
 # RETRIEVER

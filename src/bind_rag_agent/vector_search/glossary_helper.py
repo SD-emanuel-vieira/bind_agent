@@ -536,6 +536,110 @@ _compute_anchor_score = compute_anchor_score
 # FUNCIÓN PRINCIPAL: PREPARACIÓN DE CANDIDATOS
 # ============================================================
 
+def _file_date_as_int(hit: Dict[str, Any]) -> int:
+    """Convierte file_date a int para comparación numérica. '2025-11-18' → 20251118."""
+    fd = hit.get("file_date") or ""
+    try:
+        return int(fd.replace("-", ""))
+    except (ValueError, AttributeError):
+        return 0
+
+
+def _relevance_sort_key(h: Dict[str, Any]) -> tuple:
+    """Sort key estándar por relevancia (sin fecha)."""
+    return (
+        h.get("_anchor_score", 0) * 100,
+        h.get("_metadata_bonus", 0) * 10,
+        h.get("_glossary_bonus", 0),
+        float(h.get("score") or h.get("similarity") or 0.0),
+    )
+
+
+def _select_with_recency_priority(
+    hits: List[Dict[str, Any]],
+    max_input: int,
+    recency_ratio: Optional[float] = None,
+) -> List[Dict[str, Any]]:
+    """
+    Selecciona hasta max_input hits garantizando que el archivo más reciente
+    tenga representación prioritaria, sin sacrificar relevancia.
+
+    Estrategia:
+      1. Agrupar hits por file_date (cada fecha = un archivo mensual).
+      2. Ordenar grupos de más reciente a más antiguo.
+      3. Reservar recency_ratio × max_input slots para el archivo más reciente
+         (solo llenados con hits que tengan score > 0, es decir, relevantes).
+      4. Llenar el resto con los mejores hits de los demás archivos.
+      5. Dentro de cada grupo, mantener orden por relevancia.
+
+    Args:
+        hits: Lista de hits ya con scores calculados (_anchor_score, etc.)
+        max_input: Máximo total de candidatos a retornar.
+        recency_ratio: Fracción de slots reservados para el archivo más reciente.
+                       Default desde config RAG_RECENCY_RATIO (0.60).
+                       Ej: con max_input=24 → 14 slots reservados.
+
+    Returns:
+        Lista de hasta max_input hits, con prioridad al archivo más reciente.
+    """
+    from bind_rag_agent.config import RECENCY_RATIO as _DEFAULT_RATIO
+
+    if recency_ratio is None:
+        recency_ratio = _DEFAULT_RATIO
+    if not hits or max_input <= 0:
+        return []
+
+    # --- Agrupar por file_date ---
+    from collections import defaultdict
+    by_date: Dict[int, List[Dict[str, Any]]] = defaultdict(list)
+    for h in hits:
+        fd_int = _file_date_as_int(h)
+        by_date[fd_int].append(h)
+
+    # Ordenar cada grupo internamente por relevancia
+    for fd_int in by_date:
+        by_date[fd_int].sort(key=_relevance_sort_key, reverse=True)
+
+    # Ordenar fechas de más reciente a más antigua
+    sorted_dates = sorted(by_date.keys(), reverse=True)
+
+    if len(sorted_dates) <= 1:
+        # Solo hay un archivo (o ninguno con fecha), no hace falta lógica especial
+        all_sorted = sorted(hits, key=_relevance_sort_key, reverse=True)
+        return all_sorted[:max_input]
+
+    # --- Asignar slots ---
+    newest_date = sorted_dates[0]
+    newest_hits = by_date[newest_date]
+
+    # Solo reservar slots para hits relevantes del archivo más reciente
+    # (anchor_score > 0 indica que el chunk tiene match con la query)
+    newest_relevant = [
+        h for h in newest_hits if h.get("_anchor_score", 0) > 0
+    ]
+
+    reserved_slots = min(
+        int(max_input * recency_ratio),
+        len(newest_relevant),
+    )
+    # Garantizar al menos max_input // 3 para el más reciente si tiene hits relevantes
+    if newest_relevant:
+        reserved_slots = max(reserved_slots, min(max_input // 3, len(newest_relevant)))
+
+    selected_newest = newest_relevant[:reserved_slots]
+    selected_ids = {h.get("chunk_id") for h in selected_newest}
+
+    # --- Llenar remaining_slots con los mejores hits de otros archivos ---
+    remaining_slots = max_input - len(selected_newest)
+    rest_hits = [h for h in hits if h.get("chunk_id") not in selected_ids]
+    rest_hits.sort(key=_relevance_sort_key, reverse=True)
+    selected_rest = rest_hits[:remaining_slots]
+
+    # --- Combinar: newest primero (por relevancia), luego el resto ---
+    result = selected_newest + selected_rest
+    return result
+
+
 def prepare_rerank_candidates_glossary_aware(
     query: str,
     hits: List[Dict[str, Any]],
@@ -552,6 +656,13 @@ def prepare_rerank_candidates_glossary_aware(
     1. Anchor score × 100 (match con entidades y keywords)
     2. Glossary bonus (match con términos del glosario)
     3. Base score (similarity score del vector search)
+    
+    RECENCY PRIORITY (NUEVO):
+    Cuando hay múltiples archivos mensuales con contenido equivalente,
+    se reserva ~60% de los slots para el archivo más reciente (por file_date).
+    Esto garantiza que el reranker LLM reciba suficientes chunks del archivo
+    más actual, evitando que se diluyan entre archivos históricos con
+    scores idénticos.
     
     Side effects:
     - Agrega "_anchor_score" a cada hit
@@ -595,16 +706,7 @@ def prepare_rerank_candidates_glossary_aware(
             hit["_glossary_phrase_hits"] = 0
             hit["_glossary_token_hits"] = 0
         
-        ranked = sorted(
-            hits,
-            key=lambda h: (
-                h.get("_anchor_score", 0),
-                h.get("_metadata_bonus", 0),
-                float(h.get("score") or h.get("similarity") or 0.0)
-            ),
-            reverse=True
-        )
-        return ranked[:max_input]
+        return _select_with_recency_priority(hits, max_input)
     
     # ============================================================
     # Paso 3: Separar frases vs tokens del glosario
@@ -644,16 +746,7 @@ def prepare_rerank_candidates_glossary_aware(
         for hit in hits:
             hit["_glossary_bonus"] = 0
         
-        ranked = sorted(
-            hits,
-            key=lambda h: (
-                h.get("_anchor_score", 0),
-                h.get("_metadata_bonus", 0),
-                float(h.get("score") or h.get("similarity") or 0.0)
-            ),
-            reverse=True
-        )
-        return ranked[:max_input]
+        return _select_with_recency_priority(hits, max_input)
     
     # ============================================================
     # Paso 4: Compilar patterns para matching eficiente
@@ -719,17 +812,6 @@ def prepare_rerank_candidates_glossary_aware(
         hit["_glossary_bonus"] = glossary_bonus_val - penalty
     
     # ============================================================
-    # Paso 6: Ordenar por criterios múltiples
+    # Paso 6: Selección con prioridad de recencia
     # ============================================================
-    ranked = sorted(
-        hits,
-        key=lambda h: (
-            h.get("_anchor_score", 0) * 100,  # Prioridad 1: anchor score
-            h.get("_metadata_bonus", 0) * 10,  # Prioridad 2: metadata enrich bonus
-            h.get("_glossary_bonus", 0),        # Prioridad 3: glossary bonus
-            _base_score(h)                       # Prioridad 4: similarity score
-        ),
-        reverse=True
-    )
-    
-    return ranked[:max_input]
+    return _select_with_recency_priority(hits, max_input)
