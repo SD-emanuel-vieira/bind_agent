@@ -19,48 +19,30 @@ artifacts:
     
 # Variable declarations. These variables are assigned in the dev/prod targets below.
 variables:
-  catalog:
-    description: bind_agent
-  schema:
-    description: docs
-
   vs_endpoint:
     default: bind_agent_vs
-  vs_index_full_name:
-    default: bind_agent.docs.pdf_chunks_vs_idx
-
   embed_endpoint:
     default: databricks-bge-large-en
-  llm_endpoint:
-    default: databricks-gemma-3-12b
-
   top_k_candidates:
+    default: "120"
+  lex_fallback_limit:
     default: "40"
   top_k_final:
     default: "8"
-  lex_fallback_limit:
-    default: "20"
-
   max_context_chars:
-    default: "14000"
+    default: "60000"
   rerank_snippet_chars:
-    default: "1200"
-
+    default: "3400"
   temperature_rerank:
     default: "0.0"
   temperature_answer:
     default: "0.2"
   max_tokens_answer:
     default: "900"
-
   max_retries:
     default: "3"
   retry_sleep_secs:
     default: "1.0"
-
-  uc_model_name:
-    default: bind_agent.docs.rag_agent
-
   model_serving_endpoint:
     default: bind_agent_rag_agent
     
@@ -75,17 +57,21 @@ targets:
     workspace:
       host: https://dbc-56f60291-144c.cloud.databricks.com
     variables:
-      catalog: hive_metastore
-      schema: dev
-  prod:
-    mode: production
+      catalog: bind_agent
+      schema: docs
+      vs_index_full_name: bind_agent.docs.pdf_chunks_vs_idx
+      llm_endpoint: databricks-llama-4-maverick
+      uc_model_name: bind_agent.docs.rag_agent
+
+  dev-bind:
+    mode: development
+    default: false
     workspace:
-      host: https://dbc-56f60291-144c.cloud.databricks.com
-      # We explicitly deploy to /Workspace/Users/emanuel.vieira@sunnydata.ai to make sure we only have a single copy.
-      root_path: /Workspace/Users/emanuel.vieira@sunnydata.ai/.bundle/${bundle.name}/${bundle.target}
+      host: https://bind-dev.cloud.databricks.com
     variables:
-      catalog: hive_metastore
-      schema: prod
-    permissions:
-      - user_name: emanuel.vieira@sunnydata.ai
-        level: CAN_MANAGE
+      catalog: demo
+      schema: docs
+      vs_index_full_name: bind_agent.docs.pdf_chunks_vs_idx
+      llm_endpoint: databricks-gpt-5-2
+      uc_model_name: demo.docs.rag_agent
+
