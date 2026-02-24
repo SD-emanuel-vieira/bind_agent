@@ -18,9 +18,6 @@ EMB_ENDPOINT = EMBED_ENDPOINT  # backward-compatible alias
 LLM_ENDPOINT = _get_env("RAG_LLM_ENDPOINT")
 TABLE_ = 'bind_agent.docs.silver_excel'
 LLM_ENDPOINT_SQL = _get_env("RAG_LLM_ENDPOINT")
-# LLM_ENDPOINT_SQL = 'databricks-llama-4-maverick' 
-# LLM_ENDPOINT = _get_env("RAG_LLM_ENDPOINT", default="databricks-gpt-5-2")
-# LLM_ENDPOINT = "databricks-gpt-5-2"
 
 # --- Retrieval params ---
 TOP_K_CANDIDATES = int(_get_env("RAG_TOP_K_CANDIDATES"))
@@ -77,6 +74,9 @@ SEGMENT_ALIASES = {
     "pymes": "pyme",
 }
 
+# Tabla delta con logs del RAG
+DELTA_LOG_TABLE = _get_env("RAG_DELTA_LOG_TABLE")
+
 # ====================================================================
 # CONTEXT LIMITS (evidence + answer)
 # ====================================================================
@@ -118,6 +118,8 @@ TRACE_DEFAULT_TOP           = int(_get_env("RAG_TRACE_DEFAULT_TOP", "12"))
 RERANK_INPUT_MULTIPLIER     = int(_get_env("RAG_RERANK_INPUT_MULTIPLIER", "3"))
 RERANK_INPUT_OFFSET         = int(_get_env("RAG_RERANK_INPUT_OFFSET", "12"))
 RECENCY_RATIO               = float(_get_env("RAG_RECENCY_RATIO", "0.60"))
+DEDUP_ENABLED               = _get_env("RAG_DEDUP_ENABLED", "1") == "1"
+DEDUP_QUOTA_OLD_FILE        = int(_get_env("RAG_DEDUP_QUOTA_OLD_FILE", "3"))
 
 # ====================================================================
 # RETRIEVER

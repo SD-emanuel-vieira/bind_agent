@@ -5,6 +5,8 @@ ACTUALIZADO:
 - El reranker LLM ahora recibe información del anchor_score
 - Los chunks con alto anchor_score están "protegidos" y no pueden bajar demasiado
 - Mejor balance entre relevancia semántica (LLM) y match exacto (anchors)
+- NUEVO: collapse_cross_file_duplicates() para deduplicar contenido
+  estructuralmente idéntico entre archivos mensuales
 
 REFACTORIZADO:
 - Las funciones de anchor (query_anchors, hit_anchor_score) ahora se importan
@@ -17,7 +19,7 @@ REFACTORIZADO:
 
 import os
 import re
-from collections import Counter
+from collections import Counter, defaultdict
 from typing import Any, Dict, List, Set
 
 from bind_rag_agent.config import (
@@ -44,6 +46,163 @@ from bind_rag_agent.vector_search.glossary_helper import (
     compute_anchor_score,
     compute_metadata_bonus,
 )
+
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+# ============================================================
+# DEDUPLICACIÓN POR CUOTA DE FAMILIA + ANTIGÜEDAD
+# ============================================================
+
+# Patrones para detectar la "familia" de un archivo a partir del path
+_SOURCE_FAMILIES = {
+    "directorio": re.compile(r"directorio", re.IGNORECASE),
+    "cdg": re.compile(r"cdg", re.IGNORECASE),
+}
+
+
+def _get_source_family(hit: Dict[str, Any]) -> str:
+    """
+    Clasifica un hit en su familia de fuente a partir del path.
+    
+    Returns:
+        "directorio", "cdg", o "_other" si no matchea ningún patrón conocido.
+    """
+    path = (hit.get("path") or "").lower()
+    for family, pattern in _SOURCE_FAMILIES.items():
+        if pattern.search(path):
+            return family
+    return "_other"
+
+
+def _file_date_int(hit: Dict[str, Any]) -> int:
+    """'2025-11-18' → 20251118 para sort numérico."""
+    fd = hit.get("file_date") or ""
+    try:
+        return int(fd.replace("-", ""))
+    except (ValueError, AttributeError):
+        return 0
+
+
+def _relevance_key(hit: Dict[str, Any]) -> tuple:
+    """Sort key por relevancia para seleccionar los mejores chunks de archivos viejos."""
+    return (
+        hit.get("_anchor_score", 0),
+        hit.get("_metadata_bonus", 0),
+        float(hit.get("score") or hit.get("similarity") or 0.0),
+    )
+
+
+def collapse_cross_file_duplicates(
+    hits: List[Dict[str, Any]],
+    quota_old_file: int = 3,
+) -> List[Dict[str, Any]]:
+    """
+    Reduce candidatos aplicando cuota por familia de fuente y antigüedad.
+
+    Lógica:
+      1. Clasificar cada hit en una "familia" de fuente (directorio, cdg, _other).
+      2. Para cada familia, identificar el archivo MÁS RECIENTE (por file_date).
+      3. El archivo más reciente pasa COMPLETO (todos sus chunks).
+      4. Los archivos más viejos de la misma familia pasan con cuota reducida:
+         solo los top-N chunks por relevancia (anchor_score + metadata + similarity).
+      5. Hits de familia "_other" (desconocida) pasan siempre sin restricción.
+
+    Por qué funciona:
+      - Los archivos mensuales (Directorio, CdG) son acumulativos: el más
+        reciente contiene toda la info de los anteriores + el mes nuevo.
+      - El archivo más reciente siempre tiene la versión más actualizada
+        de cada tabla/slide.
+      - La cuota para archivos viejos es un safety net: si algún contenido
+        ÚNICO solo existe en un archivo viejo, sus chunks más relevantes
+        pasan la cuota y llegan al reranker.
+
+    Args:
+        hits: Lista de candidatos del retriever.
+        quota_old_file: Máximo de chunks a mantener por cada archivo viejo
+                        de cada familia. Default 3.
+
+    Returns:
+        Lista reducida. El archivo más reciente de cada familia pasa completo,
+        los viejos pasan con cuota.
+
+    Ejemplo con trace real (67 hits, quota_old_file=3):
+        ANTES:
+          Directorio 11-18: 11 chunks   CdG 11-03: 9 chunks
+          Directorio 10-21: 12 chunks   CdG 09-25: 14 chunks
+          Directorio 09-16:  3 chunks   CdG 08-27: 18 chunks
+
+        DESPUÉS (~31 hits):
+          Directorio 11-18: 11 (todos)  CdG 11-03: 9 (todos)
+          Directorio 10-21:  3 (top 3)  CdG 09-25: 3 (top 3)
+          Directorio 09-16:  3 (top 3)  CdG 08-27: 3 (top 3)
+    """
+    if not hits:
+        return []
+
+    # --- Paso 1: Agrupar por (familia, file_date) ---
+    # Estructura: { "directorio": { 20251118: [hits...], 20251021: [hits...] }, ... }
+    family_groups: Dict[str, Dict[int, List[Dict[str, Any]]]] = defaultdict(lambda: defaultdict(list))
+
+    for h in hits:
+        family = _get_source_family(h)
+        fd_int = _file_date_int(h)
+        family_groups[family][fd_int].append(h)
+
+    # --- Paso 2: Para cada familia, aplicar cuota ---
+    result: List[Dict[str, Any]] = []
+    total_dropped = 0
+    family_stats: List[str] = []
+
+    for family, dates_dict in family_groups.items():
+        if family == "_other":
+            # Familia desconocida: pasa todo sin restricción
+            for date_hits in dates_dict.values():
+                result.extend(date_hits)
+            continue
+
+        # Ordenar fechas de más reciente a más antigua
+        sorted_dates = sorted(dates_dict.keys(), reverse=True)
+
+        if not sorted_dates:
+            continue
+
+        newest_date = sorted_dates[0]
+
+        for fd_int in sorted_dates:
+            file_hits = dates_dict[fd_int]
+
+            if fd_int == newest_date:
+                # Archivo más reciente: pasa completo
+                result.extend(file_hits)
+                family_stats.append(f"{family}@{fd_int}: {len(file_hits)} (all)")
+            else:
+                # Archivo viejo: cuota
+                if len(file_hits) <= quota_old_file:
+                    result.extend(file_hits)
+                    family_stats.append(f"{family}@{fd_int}: {len(file_hits)} (all≤quota)")
+                else:
+                    # Seleccionar los top-N por relevancia
+                    file_hits.sort(key=_relevance_key, reverse=True)
+                    kept = file_hits[:quota_old_file]
+                    result.extend(kept)
+                    dropped = len(file_hits) - quota_old_file
+                    total_dropped += dropped
+                    family_stats.append(
+                        f"{family}@{fd_int}: {len(file_hits)}→{quota_old_file} (-{dropped})"
+                    )
+
+    if total_dropped > 0:
+        logger.info(
+            f"[rerank] collapse_cross_file_duplicates: "
+            f"{len(hits)} → {len(result)} hits "
+            f"(-{total_dropped} por cuota, quota_old_file={quota_old_file}) | "
+            f"{', '.join(family_stats)}"
+        )
+
+    return result
 
 
 # ============================================================

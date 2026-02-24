@@ -10,6 +10,8 @@ from bind_rag_agent.config import (
     RERANK_INPUT_MULTIPLIER,
     RERANK_INPUT_OFFSET,
     RERANK_TIE_BREAK_BLOCK_SIZE,
+    DEDUP_ENABLED,
+    DEDUP_QUOTA_OLD_FILE,
 )
 from bind_rag_agent.text_utils import drop_segment_topics_if_query_general
 from bind_rag_agent.vector_search.retriever import retrieve_candidates, decompose_multi_segment_query
@@ -19,6 +21,7 @@ from bind_rag_agent.vector_search.rerank import (
     rerank_with_llm,
     trace_stage,
     sort_by_source_and_date,
+    collapse_cross_file_duplicates,
 )
 from bind_rag_agent.vector_search.glossary_helper import prepare_rerank_candidates_glossary_aware
 from bind_rag_agent.vector_search.evidence_handling import build_context, extract_evidence, answer_from_evidence
@@ -26,7 +29,7 @@ from bind_rag_agent.sql_search.sql_evidence import answer_sql, get_sql_evidence,
 from bind_rag_agent.sql_search.smart_routing import validate_and_route, should_try_sql
 from bind_rag_agent.sql_search.sql_trace import trace_sql
 from bind_rag_agent.token_counter import token_counter
-
+from bind_rag_agent.delta_logger import log_rag_to_delta
 
 # -------------------------
 # Orchestrator (end-to-end RAG)
@@ -93,6 +96,7 @@ def answer_with_rag(query: str) -> Dict[str, Any]:
         )
         result = build_sql_response(query, sql_evidence)
         result.update(token_counter.get_totals())
+        log_rag_to_delta(result) # se guarda el resultado en la tabla de logs del RAG
         return result
     
     trace_sql(
@@ -122,14 +126,17 @@ def answer_with_rag(query: str) -> Dict[str, Any]:
     candidates = drop_segment_topics_if_query_general(query, candidates)
     trace_stage("1.1) drop_segment_topics_if_query_general", query, candidates)
 
+    # Deduplicar chunks estructuralmente idénticos entre archivos mensuales
+    # (misma tabla con distintos valores numéricos → mantener solo la versión más reciente)
+    if DEDUP_ENABLED:
+        candidates = collapse_cross_file_duplicates(candidates, quota_old_file=DEDUP_QUOTA_OLD_FILE)
+        trace_stage("1.5) collapse_cross_file_duplicates", query, candidates)
+
     # Soft ordering #1: anchors (gating suave por intención)
     candidates_anchor_sorted = enforce_anchor_priority(query, candidates)
     trace_stage("2) enforce_anchor_priority", query, candidates_anchor_sorted)
 
     # Soft ordering #2: glossary-aware (estricto por frases)
-    # Esto es importante para evitar que el modelo se distraiga con frases que no son relevantes para la respuesta
-    # (glossary-aware es más estricto que enforce_anchor_priority)
-    # Se toman en cuenta las evidencias más recientes por archivo
     TOP_K_RERANK_INPUT = max(TOP_K_FINAL * RERANK_INPUT_MULTIPLIER, TOP_K_FINAL + RERANK_INPUT_OFFSET) 
     hits_for_rerank = prepare_rerank_candidates_glossary_aware(query, candidates, max_input=TOP_K_RERANK_INPUT) 
     trace_stage(f"3) prepare_rerank_candidates_glossary_aware(max_input={TOP_K_RERANK_INPUT})", query, hits_for_rerank)
@@ -161,7 +168,7 @@ def answer_with_rag(query: str) -> Dict[str, Any]:
     _, citations = build_context(top_hits, max_chars=MAX_CONTEXT_CHARS) 
     print("Se armó el contexto")
 
-    return {
+    result = {
         "query": query,
         "answer": answer,
         "evidence": evidence,
@@ -172,3 +179,7 @@ def answer_with_rag(query: str) -> Dict[str, Any]:
         "multi_segment": bool(multi_segment_info),  # NUEVO: flag para debug
         **token_counter.get_totals(),
     }
+
+    log_rag_to_delta(result) # se guarda el resultado en la tabla de logs del RAG
+
+    return result
