@@ -16,7 +16,7 @@ VS_INDEX_FULL_NAME = _get_env("RAG_VS_INDEX_FULL_NAME")
 EMBED_ENDPOINT = _get_env("RAG_EMBED_ENDPOINT")  # for query_vector
 EMB_ENDPOINT = EMBED_ENDPOINT  # backward-compatible alias
 LLM_ENDPOINT = _get_env("RAG_LLM_ENDPOINT")
-TABLE_ = 'bind_agent.docs.silver_excel'
+TABLE_ = _get_env("RAG_SQL_TABLE")
 LLM_ENDPOINT_SQL = _get_env("RAG_LLM_ENDPOINT")
 
 # --- Retrieval params ---
