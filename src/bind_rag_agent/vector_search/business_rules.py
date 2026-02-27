@@ -117,18 +117,23 @@ BUSINESS_RULES: Dict[str, Dict] = {
     },
     
     "MF Préstamos": {
-        "definicion": "Margen Financiero por Préstamos. Diferencia entre intereses cobrados por préstamos y costo de fondeo asignado.",
+        "definicion": "Margen Financiero por Préstamos. Diferencia entre intereses cobrados por préstamos y costo de fondeo asignado. Es el resultado facturado menos el costo de fondeo.",
         "formula": "MF Préstamos = Intereses Cobrados por Préstamos - Costo de Fondeo (proporción préstamos)",
-        "aliases": ["mf prestamos", "margen financiero prestamos", "margen de préstamos", "loan margin"],
+        "aliases": ["mf prestamos", "margen financiero prestamos", "margen de préstamos", 
+                    "MF (Prestamos)", "MF (Préstamos)",
+                    "loan margin"],
         "notas": [
             "Mayor spread entre tasa activa y costo de fondeo genera mayor MF",
         ]
     },
     
     "MF Depósitos": {
-        "definicion": "Margen Financiero por Depósitos. Incluye el margen generado por encaje remunerado.",
+        "definicion": "Margen Financiero por Depósitos. Incluye el margen generado por encaje remunerado. Es el resultado pagado al cliente por el deposito  neto del ingreso obtenido por el pago de la tasa de transferencia por la tesorería. Por eso da resultado positivo.",
         "formula": "MF Depósitos = Rendimiento de Colocación - Intereses Pagados a Depositantes",
-        "aliases": ["mf depositos", "margen financiero depositos", "mf depositos + encaje remunerado", "deposit margin"],
+        "aliases": ["mf depositos", "margen financiero depositos", "mf depositos + encaje remunerado", 
+                     "MF (Depositos)", "MF (Depósitos)", 
+                    "deposit margin",
+                    ],
     },
     
     "MF AFIP": {
@@ -137,13 +142,13 @@ BUSINESS_RULES: Dict[str, Dict] = {
     },
     
     "Comisiones Netas": {
-        "definicion": "Ingresos por servicios menos comisiones pagadas. Incluye mantenimiento de cuentas, transferencias, tarjetas, etc.",
+        "definicion": "Ingresos por servicios menos comisiones pagadas. Incluye mantenimiento de cuentas, transferencias, tarjetas, etc.Comisiones Netas son todas las comisiones cobradas menos las pagadas por operaciones de negocio.",
         "formula": "Comisiones Netas = Comisiones Cobradas - Comisiones Pagadas",
         "aliases": ["comisiones netas", "comisiones", "fees", "net fees", "net commissions"],
     },
     
     "NDF + FX": {
-        "definicion": "Resultado por operaciones de derivados (Non-Deliverable Forwards) y tipo de cambio (Foreign Exchange).",
+        "definicion": "Resultado por operaciones de derivados (Non-Deliverable Forwards) y tipo de cambio (Foreign Exchange). FX & Trading incluyen los ingresos por operaciones de cambio o de moneda además de las operaciones de trading con Títulos",
         "aliases": ["ndf fx", "ndf + fx", "resultado cambiario", "forex", "ndf"],
         "notas": [
             "Volátil y dependiente de movimientos del tipo de cambio",
@@ -152,7 +157,7 @@ BUSINESS_RULES: Dict[str, Dict] = {
     },
     
     "Previsiones & Otros": {
-        "definicion": "Provisiones para pérdidas crediticias y otros resultados menores. Dentro de la línea de Ingresos.",
+        "definicion": "Provisiones para pérdidas crediticias y otros resultados menores. Dentro de la línea de Ingresos. Previsiones & Otros son egresos del periodo para constituir previsiones por posibles perdidas de crédito futuras.",
         "aliases": ["previsiones & otros", "previsiones y otros", "previsiones"],
         "notas": [
             "Puede ser positivo (recupero de previsiones) o negativo (constitución de previsiones)",
@@ -162,7 +167,7 @@ BUSINESS_RULES: Dict[str, Dict] = {
     # ==================== GASTOS ====================
     
     "Gastos": {
-        "definicion": "Total de gastos operativos del banco. Aparecen con signo negativo en el P&L.",
+        "definicion": "Total de gastos operativos del banco. Aparecen con signo negativo en el P&L. Refleja la perdida del mes por pago de gastos Directos y gastos Indirectos",
         "formula": "Gastos = Directos + Indirectos",
         "componentes": ["Directos", "Indirectos"],
         "aliases": ["gastos", "gastos totales", "expenses", "costos operativos", "egresos"],
@@ -366,8 +371,16 @@ INTERPRETATION_RULES = """
 - **YTD**: Year to Date (acumulado del año)
 - **i.a.**: Interanual (vs mismo período año anterior)
 - **vs Budget**: Comparación contra presupuesto
-"""
 
+
+## Otras definiciones e instrucciones
+# - Segmento, banca y áreas de negocio son sinónimos. Lás áreas de negocio, segmento o bancas son: Empresas, Corporate, Institucional, Red Minorista, Digital (BaaS), Cuota a Cuota (CaC), Compra de Cartera (CdC), Tesorería.
+# - Sinónimos de presupuesto son: PEA, bdgt, bdg o budget. 
+# - Xsell representa el resultado obtenido por los negocios en otros balances o books. Xsell incluye el resultado de BIND IVSA+IAM.
+# - Cuando se pregunte Resultado a secas, debería referirse a Resultado Gestión Neto AxI o en su defecto Resultado Comercial Neto AxI.
+# - Siempre se debe tomar la información del útimo archivo disponible, independientemente si es de Directorio o CdG.
+# - Si en la consulta no especifican tiempo, que la respuesta traiga el dato del último mes y el acumulado del año.
+"""
 
 # ============================================================
 # FUNCIONES PARA EXTRAER REGLAS RELEVANTES
