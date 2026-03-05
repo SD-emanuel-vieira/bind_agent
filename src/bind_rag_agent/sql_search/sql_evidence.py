@@ -17,6 +17,8 @@ from bind_rag_agent.config import (
 )
 from bind_rag_agent.token_counter import token_counter
 
+logger = logging.getLogger("sql_evidence")
+
 # =========================================================================
 # SQL Execution: SparkSession (notebook) → Statement Execution API (serving)
 # =========================================================================
@@ -40,7 +42,7 @@ def _get_warehouse_id() -> str:
         if warehouses:
             return warehouses[0].id
     except Exception as e:
-        print(f"[sql_evidence] No se pudo autodescubrir warehouse: {e}")
+        logger.warning(f"[sql_evidence] No se pudo autodescubrir warehouse: {e}")
     
     raise ValueError(
         "No se encontró RAG_SQL_WAREHOUSE_ID. "
@@ -62,7 +64,7 @@ def _try_spark():
         _spark_available = True
         return spark
     except Exception as e:
-        print(f"[sql_evidence] SparkSession no disponible ({str(e)[:80]}), usando Statement Execution API")
+        logger.warning(f"[sql_evidence] SparkSession no disponible ({str(e)[:80]}), usando Statement Execution API")
         _spark_available = False
         return None
 
@@ -131,6 +133,20 @@ def _execute_sql_via_api(sql: str, max_rows: int = SQL_RESULT_LIMIT) -> Dict[str
 
 def _get_schema_via_api(table: str) -> str:
     """Obtiene el schema via Statement Execution API."""
+    # --- DEBUG: identificar identidad del endpoint ---
+    try:
+        from databricks.sdk import WorkspaceClient
+        _w = WorkspaceClient()
+        logger.warning(f"[sql_evidence] Auth: type={_w.config.auth_type}, host={_w.config.host}")
+        try:
+            me = _w.current_user.me()
+            logger.warning(f"[sql_evidence] Identity: {me.user_name} (id={me.id})")
+        except Exception as e2:
+            logger.warning(f"[sql_evidence] current_user.me() failed: {e2}")
+    except Exception as e:
+        logger.warning(f"[sql_evidence] WorkspaceClient failed: {e}")
+    # --- FIN DEBUG ---
+
     result = _execute_sql_via_api(f"DESCRIBE TABLE {table}")
     if not result['ok']:
         raise ValueError(f"No se pudo obtener schema de {table}: {result['error']}")
@@ -160,9 +176,9 @@ def suppress_spark_errors():
     ]
     original_levels = {}
     for logger_name in loggers_to_suppress:
-        logger = logging.getLogger(logger_name)
-        original_levels[logger_name] = logger.level
-        logger.setLevel(logging.CRITICAL + 1)
+        _logger = logging.getLogger(logger_name)
+        original_levels[logger_name] = _logger.level
+        _logger.setLevel(logging.CRITICAL + 1)
     try:
         yield
     finally:
@@ -216,8 +232,7 @@ def run_sql_preview(sql: str, n: int = SQL_RESULT_LIMIT) -> dict:
                 error_msg = str(e)
                 if len(error_msg) > 200:
                     error_msg = error_msg[:200] + "..."
-                # No retornar error todavía, intentar con API
-                print(f"[sql_evidence] Spark SQL falló, intentando API: {error_msg[:100]}")
+                logger.warning(f"[sql_evidence] Spark SQL falló, intentando API: {error_msg[:100]}")
     
     # Fallback: Statement Execution API
     return _execute_sql_via_api(sql, max_rows=n)
@@ -438,9 +453,9 @@ def answer_sql(question: str) -> str:
     schema_txt = get_schema_text()
     sql = text_to_sql(question, TABLE_, schema_txt)
 
-    print('---SQL GENERADA---')
-    print(sql)
-    print('------------------')
+    logger.warning('---SQL GENERADA---')
+    logger.warning(sql)
+    logger.warning('------------------')
 
     r = run_sql_preview(sql, n=SQL_RESULT_LIMIT)
     if not r['ok']:
