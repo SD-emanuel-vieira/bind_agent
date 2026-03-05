@@ -2,10 +2,10 @@ import os
 import re
 import logging
 import mlflow
+import json
 from mlflow.deployments import get_deploy_client
 from typing import List, Dict, Any
 from contextlib import contextmanager
-from pyspark.sql import SparkSession
 import time
 from bind_rag_agent.config import (
     TABLE_, 
@@ -17,16 +17,136 @@ from bind_rag_agent.config import (
 )
 from bind_rag_agent.token_counter import token_counter
 
-_spark = None
+# =========================================================================
+# SQL Execution: SparkSession (notebook) → Statement Execution API (serving)
+# =========================================================================
 
-def _get_spark():
-    global _spark
-    if _spark is None:
-        _spark = SparkSession.builder.getOrCreate()
-    return _spark
+_SQL_WAREHOUSE_ID = os.getenv("RAG_SQL_WAREHOUSE_ID", "")
+_spark_available = None  # None = no probado aún, True/False = resultado
+
+
+def _get_warehouse_id() -> str:
+    """Obtiene el warehouse ID desde env var o autodescubrimiento."""
+    if _SQL_WAREHOUSE_ID:
+        return _SQL_WAREHOUSE_ID
+    
+    try:
+        from databricks.sdk import WorkspaceClient
+        w = WorkspaceClient()
+        warehouses = list(w.warehouses.list())
+        for wh in warehouses:
+            if wh.state and wh.state.value == "RUNNING":
+                return wh.id
+        if warehouses:
+            return warehouses[0].id
+    except Exception as e:
+        print(f"[sql_evidence] No se pudo autodescubrir warehouse: {e}")
+    
+    raise ValueError(
+        "No se encontró RAG_SQL_WAREHOUSE_ID. "
+        "Configurá la env var RAG_SQL_WAREHOUSE_ID con el ID del SQL Warehouse."
+    )
+
+
+def _try_spark():
+    """Intenta usar SparkSession. Cachea el resultado para no reintentar."""
+    global _spark_available
+    
+    if _spark_available is False:
+        return None
+    
+    try:
+        from pyspark.sql import SparkSession
+        spark = SparkSession.builder.getOrCreate()
+        spark.sql("SELECT 1").collect()  # verificar que funciona
+        _spark_available = True
+        return spark
+    except Exception as e:
+        print(f"[sql_evidence] SparkSession no disponible ({str(e)[:80]}), usando Statement Execution API")
+        _spark_available = False
+        return None
+
+
+def _execute_sql_via_api(sql: str, max_rows: int = SQL_RESULT_LIMIT) -> Dict[str, Any]:
+    """Ejecuta SQL via Statement Execution API (funciona en serving endpoints)."""
+    try:
+        from databricks.sdk import WorkspaceClient
+        w = WorkspaceClient()
+        warehouse_id = _get_warehouse_id()
+        
+        response = w.statement_execution.execute_statement(
+            warehouse_id=warehouse_id,
+            statement=sql,
+            wait_timeout="30s",
+        )
+        
+        # Verificar estado
+        status = response.status
+        if status and status.state:
+            state_val = status.state.value if hasattr(status.state, 'value') else str(status.state)
+            if state_val == "FAILED":
+                error_msg = ""
+                if status.error:
+                    error_msg = getattr(status.error, 'message', str(status.error))
+                return {
+                    'ok': False, 'has_rows': False, 'preview': '',
+                    'error': error_msg or "SQL execution failed"
+                }
+        
+        # Extraer columnas y filas
+        columns = []
+        if response.manifest and response.manifest.schema and response.manifest.schema.columns:
+            columns = [col.name for col in response.manifest.schema.columns]
+        
+        rows = []
+        if response.result and response.result.data_array:
+            rows = response.result.data_array[:max_rows]
+        
+        has_rows = len(rows) > 0
+        
+        # Generar preview en formato tabla (compatible con pandas.to_string)
+        preview = ""
+        if has_rows and columns:
+            col_widths = [len(c) for c in columns]
+            for row in rows:
+                for i, val in enumerate(row):
+                    if i < len(col_widths):
+                        col_widths[i] = max(col_widths[i], len(str(val) if val is not None else "None"))
+            
+            header = "  ".join(str(c).rjust(w) for c, w in zip(columns, col_widths))
+            preview = header + "\n"
+            for row in rows:
+                row_str = "  ".join(
+                    str(v if v is not None else "None").rjust(w) 
+                    for v, w in zip(row, col_widths)
+                )
+                preview += row_str + "\n"
+            preview = preview.rstrip()
+        
+        return {'ok': True, 'has_rows': has_rows, 'preview': preview, 'error': None}
+        
+    except Exception as e:
+        return {'ok': False, 'has_rows': False, 'preview': '', 'error': str(e)[:200]}
+
+
+def _get_schema_via_api(table: str) -> str:
+    """Obtiene el schema via Statement Execution API."""
+    result = _execute_sql_via_api(f"DESCRIBE TABLE {table}")
+    if not result['ok']:
+        raise ValueError(f"No se pudo obtener schema de {table}: {result['error']}")
+    
+    # Parsear el preview (formato tabla) para extraer col_name y data_type
+    lines = []
+    for line in result['preview'].strip().splitlines()[1:]:  # skip header
+        parts = line.split()
+        if len(parts) >= 2 and not parts[0].startswith("#"):
+            lines.append(f"- {parts[0]}: {parts[1]}")
+    
+    return "\n".join(lines)
+
 
 # =========================================================================
-# Utilidad para suprimir logs de error de PySpark/gRPC
+# Funciones públicas (con fallback automático)
 # =========================================================================
 
 @contextmanager
@@ -38,24 +158,29 @@ def suppress_spark_errors():
         'grpc._channel',
         'py4j',
     ]
-    
     original_levels = {}
     for logger_name in loggers_to_suppress:
         logger = logging.getLogger(logger_name)
         original_levels[logger_name] = logger.level
-        logger.setLevel(logging.CRITICAL + 1)  # Suprime todo
-    
+        logger.setLevel(logging.CRITICAL + 1)
     try:
         yield
     finally:
-        # Restaurar niveles originales
         for logger_name, level in original_levels.items():
             logging.getLogger(logger_name).setLevel(level)
 
 
 def schema_text(table: str) -> str:
-    fields = _get_spark().table(table).schema.fields
-    return "\n".join([f"- {f.name}: {f.dataType.simpleString()}" for f in fields])
+    """Obtiene schema. Intenta Spark primero, fallback a API."""
+    spark = _try_spark()
+    if spark:
+        try:
+            fields = spark.table(table).schema.fields
+            return "\n".join([f"- {f.name}: {f.dataType.simpleString()}" for f in fields])
+        except Exception:
+            pass
+    return _get_schema_via_api(table)
+
 
 _SCHEMA_CACHE = {"text": None, "timestamp": 0}
 
@@ -69,25 +194,34 @@ def get_schema_text() -> str:
     
     return _SCHEMA_CACHE["text"]
 
+
 def sql_tool(sql: str, n: int = SQL_RESULT_LIMIT) -> str:
-    df = _get_spark().sql(sql)
-    return df.limit(n).toPandas().to_string(index=False)
+    result = run_sql_preview(sql, n)
+    if result['ok']:
+        return result['preview']
+    raise Exception(f"SQL execution failed: {result['error']}")
+
 
 def run_sql_preview(sql: str, n: int = SQL_RESULT_LIMIT) -> dict:
-    """Ejecuta SQL y retorna resultado con metadata. Suprime logs de error."""
-    with suppress_spark_errors():
-        try:
-            df = _get_spark().sql(sql)
-            has_rows = df.limit(1).count() > 0
-            preview = df.limit(n).toPandas().to_string(index=False)
-            return {'ok': True, 'has_rows': has_rows, 'preview': preview, 'error': None}
-        except Exception as e:
-            # Extraer solo el mensaje relevante del error
-            error_msg = str(e)
-            # Simplificar mensaje de error si es muy largo
-            if len(error_msg) > 200:
-                error_msg = error_msg[:200] + "..."
-            return {'ok': False, 'has_rows': False, 'preview': '', 'error': error_msg}
+    """Ejecuta SQL. Intenta Spark primero, fallback a Statement Execution API."""
+    spark = _try_spark()
+    if spark:
+        with suppress_spark_errors():
+            try:
+                df = spark.sql(sql)
+                has_rows = df.limit(1).count() > 0
+                preview = df.limit(n).toPandas().to_string(index=False)
+                return {'ok': True, 'has_rows': has_rows, 'preview': preview, 'error': None}
+            except Exception as e:
+                error_msg = str(e)
+                if len(error_msg) > 200:
+                    error_msg = error_msg[:200] + "..."
+                # No retornar error todavía, intentar con API
+                print(f"[sql_evidence] Spark SQL falló, intentando API: {error_msg[:100]}")
+    
+    # Fallback: Statement Execution API
+    return _execute_sql_via_api(sql, max_rows=n)
+
     
 def extract_chat_content(resp) -> str:
     if isinstance(resp, dict):
@@ -150,7 +284,7 @@ def enforce_limit(sql: str, n: int = SQL_RESULT_LIMIT) -> str:
 FORBIDDEN_PATTERNS = [
     r'\bdrop\b', r'\bdelete\b', r'\bupdate\b', r'\binsert\b', 
     r'\balter\b', r'\btruncate\b', r'\bcreate\b', r'\bgrant\b',
-    r'--', r'/\*', r'\*/', r';(?!$)'  # Permitir ; solo al final
+    r'--', r'/\*', r'\*/', r';(?!$)'
 ]
 
 def validate_sql(sql: str, table: str):
@@ -166,7 +300,6 @@ def validate_sql(sql: str, table: str):
         raise ValueError('Solo se permiten consultas SELECT')
 
 def text_to_sql(question: str, table: str, schema_txt: str) -> str:
-    # Prompt mejorado: más explícito sobre funciones en inglés
     system = '''Sos experto en SQL Spark (Databricks). Devolvé SOLO SQL válido. Nada de explicación.
     IMPORTANTE: Usá funciones de Spark SQL en INGLÉS (contains, lower, trim, etc). NO uses funciones en español.'''
         
@@ -215,19 +348,6 @@ def get_sql_evidence(question: str) -> Dict[str, Any]:
     """
     Genera evidencia estructurada a partir de una query SQL.
     Nunca lanza excepciones - siempre retorna un dict con el estado.
-    
-    Returns:
-        Dict con estructura:
-        {
-            "success": bool,
-            "has_data": bool,
-            "answer": str | None,
-            "raw_data": str | None,
-            "source": str,
-            "query": str | None,           # ← NUEVO
-            "error_type": str | None,
-            "error_message": str | None
-        }
     """
     result = {
         "success": False,
@@ -235,7 +355,7 @@ def get_sql_evidence(question: str) -> Dict[str, Any]:
         "answer": None,
         "raw_data": None,
         "source": "tabla_excel_financiera",
-        "query": None,                      # ← NUEVO
+        "query": None,
         "error_type": None,
         "error_message": None
     }
@@ -244,25 +364,25 @@ def get_sql_evidence(question: str) -> Dict[str, Any]:
     try:
         schema_txt = get_schema_text()
         sql = text_to_sql(question, TABLE_, schema_txt)
-        result["query"] = sql               # ← NUEVO: Guardar la query generada
+        result["query"] = sql
     except Exception as e:
         result["error_type"] = "sql_generation"
         result["error_message"] = str(e)[:200] if len(str(e)) > 200 else str(e)
         return result
     
-    # Paso 2: Ejecutar SQL (con logs suprimidos)
+    # Paso 2: Ejecutar SQL
     r = run_sql_preview(sql, n=SQL_RESULT_LIMIT)
     
     if not r['ok']:
         result["error_type"] = "sql_execution"
         result["error_message"] = r['error']
-        return result                       # ← Ya tiene result["query"] = sql
+        return result
     
     if not r['has_rows']:
         result["success"] = True
         result["error_type"] = "no_rows"
         result["error_message"] = "La consulta no retornó resultados"
-        return result                       # ← Ya tiene result["query"] = sql
+        return result
     
     # Paso 3: Generar respuesta en lenguaje natural
     result["raw_data"] = r['preview']
@@ -297,26 +417,14 @@ def get_sql_evidence(question: str) -> Dict[str, Any]:
 
 
 def is_evidence_usable(evidence: Dict[str, Any]) -> bool:
-    """
-    Helper para determinar si la evidencia SQL es utilizable.
-    
-    Retorna True SOLO si:
-    - evidence no es None
-    - success es True
-    - has_data es True  
-    - answer no es None ni vacío
-    """
     if evidence is None:
         return False
-    
     if not isinstance(evidence, dict):
         return False
     
     success = evidence.get("success", False)
     has_data = evidence.get("has_data", False)
     answer = evidence.get("answer")
-    
-    # Verificar que answer existe y no está vacío
     has_valid_answer = answer is not None and str(answer).strip() != ""
     
     return success and has_data and has_valid_answer
@@ -327,7 +435,6 @@ def is_evidence_usable(evidence: Dict[str, Any]) -> bool:
 # =========================================================================
 
 def answer_sql(question: str) -> str:
-    """Genera y ejecuta SQL para responder una pregunta, retorna respuesta en lenguaje natural."""
     schema_txt = get_schema_text()
     sql = text_to_sql(question, TABLE_, schema_txt)
 
@@ -361,16 +468,6 @@ def answer_sql(question: str) -> str:
     return call_llm_simple(system, prompt)
 
 def build_sql_response(query: str, sql_evidence: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Construye el dict de respuesta para el caso de SQL early exit.
-    
-    Args:
-        query: La pregunta original del usuario
-        sql_evidence: El resultado de get_sql_evidence()
-        
-    Returns:
-        Dict con la estructura estándar de answer_with_rag
-    """
     return {
         "query": query,
         "answer": sql_evidence["answer"],
@@ -387,7 +484,7 @@ def build_sql_response(query: str, sql_evidence: Dict[str, Any]) -> Dict[str, An
             "source_type": "tabla_excel",
             "content": sql_evidence["raw_data"],
         }],
-        "retrieved_candidates": [],  # No se usó retrieval
-        "reranked_hits": [],          # No se usó reranking
-        "response_source": "sql_table",  # Indicador de origen
+        "retrieved_candidates": [],
+        "reranked_hits": [],
+        "response_source": "sql_table",
     }
