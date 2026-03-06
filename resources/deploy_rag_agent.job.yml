@@ -24,11 +24,12 @@ resources:
               - "databricks-vectorsearch"
               - "mlflow"
               - "databricks-sdk"
+              - "../dist/*.whl"
 
       tasks:
         - task_key: deploy_rag_agent
-          libraries:
-            - whl: ../dist/*.whl    # o referencia al artifact
+          # libraries:
+          #   - whl: ../dist/*.whl
           notebook_task:
             notebook_path: ../src/notebooks/deploy_rag_agent.ipynb
             base_parameters:

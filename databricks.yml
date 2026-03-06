@@ -19,6 +19,16 @@ artifacts:
     
 # Variable declarations. These variables are assigned in the dev/prod targets below.
 variables:
+  catalog:
+    description: "Unity Catalog catalog name"
+  schema:
+    description: "Unity Catalog schema name"
+  vs_index_full_name:
+    description: "Full name of the vector search index"
+  llm_endpoint:
+    description: "LLM serving endpoint"
+  uc_model_name:
+    description: "Unity Catalog model name"
   vs_endpoint:
     default: bind_agent_vs
   embed_endpoint:
