@@ -106,6 +106,50 @@ def answer_with_rag(query: str) -> Dict[str, Any]:
     )
 
     # =========================================================================
+    # Si el flujo SQL se intentó pero falló → NO caer al vectorial
+    # =========================================================================
+    if try_sql:
+        error_detail = ""
+        if sql_evidence:
+            error_detail = sql_evidence.get("error_message") or "sin detalle"
+        else:
+            error_detail = "No se obtuvo evidencia SQL"
+
+        trace_sql(
+            "4) SQL FAILED → Respuesta de error (sin fallback vectorial)",
+            query=query,
+            extra={"error_detail": error_detail},
+        )
+
+        no_data_answer = (
+            "No se encontró información en las matrices de resultados "
+            "de cliente, producto y oficiales. "
+            "Es posible que los datos solicitados no estén disponibles "
+            "o que haya un problema temporal de acceso. "
+            "Por favor, intentá reformular la consulta o contactá al administrador."
+        )
+
+        result = {
+            "query": query,
+            "answer": no_data_answer,
+            "evidence": {
+                "answerable": False,
+                "source": "sql_table",
+                "source_type": "structured_sql",
+                "raw_data": None,
+                "key_points": [],
+                "missing": [error_detail],
+            },
+            "citations": [],
+            "retrieved_candidates": [],
+            "reranked_hits": [],
+            "response_source": "sql_table_error",
+            **token_counter.get_totals(),
+        }
+        log_rag_to_delta(result)
+        return result
+
+    # =========================================================================
     # FLUJO RAG NORMAL (cuando SQL no tiene respuesta)
     # =========================================================================
     

@@ -76,6 +76,8 @@ def _execute_sql_via_api(sql: str, max_rows: int = SQL_RESULT_LIMIT) -> Dict[str
         w = WorkspaceClient()
         warehouse_id = _get_warehouse_id()
         
+        logger.warning(f"[sql_evidence] API exec: warehouse={warehouse_id}, sql={sql[:120]}...")
+        
         response = w.statement_execution.execute_statement(
             warehouse_id=warehouse_id,
             statement=sql,
@@ -86,10 +88,12 @@ def _execute_sql_via_api(sql: str, max_rows: int = SQL_RESULT_LIMIT) -> Dict[str
         status = response.status
         if status and status.state:
             state_val = status.state.value if hasattr(status.state, 'value') else str(status.state)
+            logger.warning(f"[sql_evidence] API response state: {state_val}")
             if state_val == "FAILED":
                 error_msg = ""
                 if status.error:
                     error_msg = getattr(status.error, 'message', str(status.error))
+                logger.error(f"[sql_evidence] SQL FAILED: {error_msg}")
                 return {
                     'ok': False, 'has_rows': False, 'preview': '',
                     'error': error_msg or "SQL execution failed"
@@ -128,6 +132,7 @@ def _execute_sql_via_api(sql: str, max_rows: int = SQL_RESULT_LIMIT) -> Dict[str
         return {'ok': True, 'has_rows': has_rows, 'preview': preview, 'error': None}
         
     except Exception as e:
+        logger.error(f"[sql_evidence] API exception: {type(e).__name__}: {str(e)[:300]}")
         return {'ok': False, 'has_rows': False, 'preview': '', 'error': str(e)[:200]}
 
 
@@ -149,6 +154,7 @@ def _get_schema_via_api(table: str) -> str:
 
     result = _execute_sql_via_api(f"DESCRIBE TABLE {table}")
     if not result['ok']:
+        logger.error(f"[sql_evidence] DESCRIBE TABLE failed: {result['error']}")
         raise ValueError(f"No se pudo obtener schema de {table}: {result['error']}")
     
     # Parsear el preview (formato tabla) para extraer col_name y data_type
@@ -235,6 +241,7 @@ def run_sql_preview(sql: str, n: int = SQL_RESULT_LIMIT) -> dict:
                 logger.warning(f"[sql_evidence] Spark SQL falló, intentando API: {error_msg[:100]}")
     
     # Fallback: Statement Execution API
+    logger.warning(f"[sql_evidence] Usando Statement Execution API para ejecutar SQL")
     return _execute_sql_via_api(sql, max_rows=n)
 
     
@@ -325,9 +332,9 @@ def text_to_sql(question: str, table: str, schema_txt: str) -> str:
         {schema_txt}
 
         MAPEO DE NEGOCIO (usar siempre estas equivalencias):
-        - "ingresos", "ingresos netos", "ingresos del cliente" → columna: resultado_neto
+        - "ingresos", "ingresos netos", "ingresos del cliente" → columna: resultado_neto_iibb
         - "ingresos brutos" → columna: resultado_bruto
-        - "resultado neto", "res neto" → columna: resultado_neto
+        - "resultado neto", "res neto" → columna: resultado_neto_iibb
         - "resultado bruto", "res bruto" → columna: resultado_bruto
         Ejemplo:
         Pregunta: "Dame los ingresos del cliente X para julio 2025"
@@ -380,9 +387,11 @@ def get_sql_evidence(question: str) -> Dict[str, Any]:
         schema_txt = get_schema_text()
         sql = text_to_sql(question, TABLE_, schema_txt)
         result["query"] = sql
+        logger.warning(f"[sql_evidence] SQL generado: {sql[:200]}")
     except Exception as e:
         result["error_type"] = "sql_generation"
         result["error_message"] = str(e)[:200] if len(str(e)) > 200 else str(e)
+        logger.error(f"[sql_evidence] SQL generation FAILED: {result['error_message']}")
         return result
     
     # Paso 2: Ejecutar SQL
@@ -391,12 +400,14 @@ def get_sql_evidence(question: str) -> Dict[str, Any]:
     if not r['ok']:
         result["error_type"] = "sql_execution"
         result["error_message"] = r['error']
+        logger.error(f"[sql_evidence] SQL execution FAILED: {r['error']}")
         return result
     
     if not r['has_rows']:
         result["success"] = True
         result["error_type"] = "no_rows"
         result["error_message"] = "La consulta no retornó resultados"
+        logger.warning(f"[sql_evidence] SQL OK pero sin filas")
         return result
     
     # Paso 3: Generar respuesta en lenguaje natural
@@ -421,6 +432,7 @@ def get_sql_evidence(question: str) -> Dict[str, Any]:
         result["answer"] = answer
         result["success"] = True
         result["has_data"] = True
+        logger.warning(f"[sql_evidence] SQL evidence OK: has_data=True, answer_len={len(answer or '')}")
         
     except Exception as e:
         result["success"] = True
