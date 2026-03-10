@@ -55,7 +55,11 @@ variables:
     default: "1.0"
   model_serving_endpoint:
     default: bind_agent_rag_agent
-    
+  delta_log_table:
+    description: "Delta table used for SQL log"
+  sql_warehouse:
+    description: "SQL warehouse ID"
+
 targets:
   dev:
     # The default target uses 'mode: development' to create a development copy.
