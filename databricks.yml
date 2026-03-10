@@ -71,6 +71,8 @@ targets:
       schema: docs
       vs_index_full_name: bind_agent.docs.pdf_chunks_vs_idx
       llm_endpoint: databricks-llama-4-maverick
+      delta_log_table: bind_agent.docs.silver_excel
+      sql_warehouse: 1b632a5315f277d9
       uc_model_name: bind_agent.docs.rag_agent
 
   dev-bind:
@@ -83,5 +85,7 @@ targets:
       schema: docs
       vs_index_full_name: bind_agent.docs.pdf_chunks_vs_idx
       llm_endpoint: databricks-gpt-5-2
+      delta_log_table: demo.docs.silver_excel
+      sql_warehouse: 1b632a5315f277d9
       uc_model_name: demo.docs.rag_agent
 

@@ -51,5 +51,7 @@ resources:
               RETRY_SLEEP_SECS: ${var.retry_sleep_secs}
               UC_MODEL_NAME: ${var.uc_model_name}
               MODEL_SERVING_ENDPOINT: ${var.model_serving_endpoint}
+              RAG_SQL_TABLE: ${var.delta_log_table}
+              RAG_SQL_WAREHOUSE_ID: ${var.sql_warehouse}
           
           environment_key: agent_deploy
