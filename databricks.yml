@@ -61,6 +61,13 @@ variables:
     description: "Delta table used for SQL log"
   sql_warehouse:
     description: "SQL warehouse ID"
+  serving_sp_secret_scope:
+    description: "Secret scrope donde está guardado el secret para autenticacion"   
+  serving_sp_secret_key:
+    description: "Secret key donde está guardado el secret para autenticacion"     
+  create_sp_secret:
+    description: "Flag dedicado para crear el secret en caso de que no exista y guardarlo en el secret scope"
+  
 
 targets:
   dev:
@@ -81,6 +88,9 @@ targets:
       delta_log_table: bind_agent.docs.silver_excel
       sql_warehouse: 1b632a5315f277d9
       uc_model_name: bind_agent.docs.rag_agent
+      serving_sp_secret_scope: bind-agent-secrets
+      serving_sp_secret_key: sp-bind-rag-agent-client-secret
+      create_sp_secret: True
 
   dev-bind:
     mode: development
@@ -96,4 +106,7 @@ targets:
       delta_log_table: dev_sandbox.docs.silver_excel
       sql_warehouse: 258ac74472ffef98
       uc_model_name: dev_sandbox.docs.rag_agent
+      # serving_sp_secret_scope: bind-agent-secrets
+      # serving_sp_secret_key: sp-bind-rag-agent-client-secret
+      create_sp_secret: False
 
