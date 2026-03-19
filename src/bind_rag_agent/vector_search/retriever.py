@@ -4,8 +4,8 @@ import time
 from datetime import datetime, date
 from typing import Any, Dict, List, Optional, Set, Tuple
 import os
-import requests
-from mlflow.utils.databricks_utils import get_databricks_host_creds
+# import requests
+# from mlflow.utils.databricks_utils import get_databricks_host_creds
 from databricks.vector_search.client import VectorSearchClient
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -281,14 +281,24 @@ def _hydrate_metadata_enrich_from_table(hits: List[Dict[str, Any]]) -> List[Dict
 
 
 def _get_index():
-    """
-    Obtiene el índice de Vector Search, inicializándolo si es necesario.
-    Usa patrón singleton para evitar múltiples conexiones.
-    """
     global _vsc, _index
     
     if _index is None:
-        _vsc = VectorSearchClient()
+        sp_client_id = os.environ.get("DATABRICKS_CLIENT_ID")
+        sp_client_secret = os.environ.get("DATABRICKS_CLIENT_SECRET")
+        workspace_url = os.environ.get("DATABRICKS_HOST")
+
+        if sp_client_id and sp_client_secret and workspace_url:
+            _vsc = VectorSearchClient(
+                workspace_url=workspace_url,
+                service_principal_client_id=sp_client_id,
+                service_principal_client_secret=sp_client_secret,
+            )
+            logger.info("[retriever] VectorSearchClient autenticado con Service Principal")
+        else:
+            _vsc = VectorSearchClient()
+            logger.info("[retriever] VectorSearchClient autenticado con contexto de notebook")
+
         _index = _vsc.get_index(VS_ENDPOINT, VS_INDEX_FULL_NAME)
         logger.info(f"[retriever] Index inicializado: {VS_INDEX_FULL_NAME}")
     
@@ -374,7 +384,7 @@ def _vs_full_text_query(
 
 
 # ============================================================
-# LEXICAL FALLBACK
+# LEXICAL FALLBACK (FULL_TEXT via SDK)
 # ============================================================
 def lexical_fallback(
     query: str, 
@@ -382,24 +392,33 @@ def lexical_fallback(
     limit: int = LEX_FALLBACK_LIMIT,
     filters: Optional[Dict[str, str]] = None,
 ) -> List[Dict[str, Any]]:
-    """
-    Best-effort: agrega matches lexicográficos desde Vector Search index (FULL_TEXT).
-    Merge + dedupe con hits existentes.
-    """
     q = (query or "").strip()
     if not q:
         return hits
 
     try:
-        rows = _vs_full_text_query(
-            index_name=VS_INDEX_FULL_NAME,
-            query_text=q,
-            columns=VS_COLUMNS,
-            num_results=limit,
-            filters=filters,
-        )
+        index = _get_index()
+        kwargs = {
+            "query_text": q,
+            "columns": VS_COLUMNS,
+            "num_results": min(int(limit), VS_FULL_TEXT_MAX_RESULTS),
+            "filters": filters,
+        }
+
+        # Intentar FULL_TEXT (puro léxico, ideal)
+        # Si el workspace no soporta el beta, caer a hybrid
+        try:
+            res = index.similarity_search(**kwargs, query_type="FULL_TEXT")
+        except Exception as ft_err:
+            if "400" in str(ft_err) or "Bad Request" in str(ft_err):
+                logger.info("[retriever] FULL_TEXT no soportado, usando hybrid")
+                res = index.similarity_search(**kwargs, query_type="hybrid")
+            else:
+                raise ft_err
+
+        rows = parse_vs_similarity_response(res)
     except Exception as e:
-        logger.warning(f"[retriever] Lexical FULL_TEXT fallback failed: {repr(e)}")
+        logger.warning(f"[retriever] Lexical fallback failed: {repr(e)}")
         return hits
 
     lex_hits: List[Dict[str, Any]] = []
