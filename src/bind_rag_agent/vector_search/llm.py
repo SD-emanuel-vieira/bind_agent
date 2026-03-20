@@ -33,13 +33,24 @@ def timeout(seconds: int):
         signal.signal(signal.SIGALRM, old_handler)
 
 # LLM call to chat
-def call_chat(endpoint: str, messages: List[Dict[str, str]], temperature: float, max_tokens: int, timeout_seconds: int = LLM_CALL_TIMEOUT_SECS) -> str:
-    with timeout(timeout_seconds):
-        payload = {"messages": messages, "temperature": temperature, "max_tokens": max_tokens}
+import concurrent.futures
+
+def call_chat(endpoint, messages, temperature, max_tokens, 
+              timeout_seconds=LLM_CALL_TIMEOUT_SECS):
+    def _call():
+        payload = {"messages": messages, "temperature": temperature, 
+                   "max_tokens": max_tokens}
         client = mlflow.deployments.get_deploy_client("databricks")
         resp = client.predict(endpoint=endpoint, inputs=payload)
         token_counter.add_from_response(resp)
         return extract_chat_content(resp)
+    
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+        future = pool.submit(_call)
+        try:
+            return future.result(timeout=timeout_seconds)
+        except concurrent.futures.TimeoutError:
+            raise TimeoutError(f"Operación excedió {timeout_seconds} segundos")
 
 # -------------------------
 # CELL 2: Query expansion (ES -> keywords + EN)

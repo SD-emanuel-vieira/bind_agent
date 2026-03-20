@@ -49,4 +49,7 @@ def embed_query(text: str) -> Optional[List[float]]:
     if isinstance(res, list) and res and isinstance(res[0], (float, int)):
         return res  # type: ignore[return-value]
 
-    return None
+    raise ValueError(
+        f"Formato de respuesta inesperado del endpoint {EMBED_ENDPOINT}: "
+        f"{type(res).__name__}"
+    )

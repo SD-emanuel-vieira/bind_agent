@@ -4,8 +4,6 @@ import time
 from datetime import datetime, date
 from typing import Any, Dict, List, Optional, Set, Tuple
 import os
-# import requests
-# from mlflow.utils.databricks_utils import get_databricks_host_creds
 from databricks.vector_search.client import VectorSearchClient
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -280,10 +278,33 @@ def _hydrate_metadata_enrich_from_table(hits: List[Dict[str, Any]]) -> List[Dict
     return hits
 
 
-def _get_index():
+def _get_index(force_reinit: bool = False):
+    """
+    Obtiene el índice de Vector Search, inicializándolo si es necesario.
+    
+    Thread-safe: usa double-checked locking para que solo un thread
+    inicialice el cliente, incluso en flujos multi-segmento paralelos.
+    
+    Recuperación: si force_reinit=True, descarta la conexión existente
+    y crea una nueva. Útil cuando el token del SP expira o hay un
+    error de conectividad transitorio.
+    
+    Autenticación:
+      - Si hay DATABRICKS_CLIENT_ID + DATABRICKS_CLIENT_SECRET + DATABRICKS_HOST
+        (típico en serving endpoints con Service Principal), se pasan explícitamente
+        al VectorSearchClient.
+      - Si no, se usa auto-detect (típico en notebooks).
+    """
     global _vsc, _index
     
-    if _index is None:
+    if _index is not None and not force_reinit:
+        return _index
+    
+    with _lock:
+        # Double-check: otro thread pudo inicializar mientras esperábamos el lock
+        if _index is not None and not force_reinit:
+            return _index
+        
         sp_client_id = os.environ.get("DATABRICKS_CLIENT_ID")
         sp_client_secret = os.environ.get("DATABRICKS_CLIENT_SECRET")
         workspace_url = os.environ.get("DATABRICKS_HOST")
@@ -305,117 +326,68 @@ def _get_index():
     return _index
 
 
-# ============================================================
-# AUTENTICACIÓN DATABRICKS (para FULL_TEXT queries)
-# ============================================================
-def _get_dbx_auth() -> Tuple[str, str]:
-    """Get Databricks host + token."""
-    host = (os.getenv("DATABRICKS_HOST") or os.getenv("WORKSPACE_URL") or "").rstrip("/")
-    token = os.getenv("DATABRICKS_TOKEN") or os.getenv("TOKEN") or ""
+# Palabras clave en errores que indican que reconectar puede resolver el problema
+_RETRIABLE_ERROR_KEYWORDS = {"auth", "token", "expired", "unauthenticated", "permission denied", "unauthorized"}
 
-    if not host or not token:
-        try:
-            creds = get_databricks_host_creds()
-            host = host or (getattr(creds, "host", "") or "").rstrip("/")
-            token = token or (getattr(creds, "token", "") or "")
-        except Exception:
-            pass
 
-    if not host or not token:
-        try:
-            from pyspark.sql import SparkSession
-            spark = SparkSession.getActiveSession() or SparkSession.builder.getOrCreate()
-            if not host:
-                host = ("https://" + spark.conf.get("spark.databricks.workspaceUrl")).rstrip("/")
-            if not token:
-                token = dbutils.notebook.entry_point.getDbutils().notebook().getContext().apiToken().get()
-        except Exception:
-            pass
-
-    if not host or not token:
-        raise RuntimeError(
-            "Missing Databricks auth. Set DATABRICKS_HOST + DATABRICKS_TOKEN (or run inside a Databricks notebook)."
-        )
-
-    return host, token
+def _similarity_search_with_retry(**kwargs) -> Any:
+    """
+    Wrapper sobre index.similarity_search con retry automático.
+    
+    Si el primer intento falla con un error de autenticación o token
+    expirado, fuerza reconexión del VectorSearchClient y reintenta
+    una vez. Esto cubre el caso donde el serving endpoint lleva horas
+    corriendo y el token del SP expiró.
+    
+    Acepta los mismos kwargs que index.similarity_search().
+    """
+    index = _get_index()
+    try:
+        return index.similarity_search(**kwargs)
+    except Exception as e:
+        err_lower = str(e).lower()
+        if any(kw in err_lower for kw in _RETRIABLE_ERROR_KEYWORDS):
+            logger.warning(f"[retriever] Auth error detectado, reconectando: {repr(e)}")
+            index = _get_index(force_reinit=True)
+            return index.similarity_search(**kwargs)
+        raise
 
 
 # ============================================================
-# FULL_TEXT QUERY (Lexical Search)
-# ============================================================
-def _vs_full_text_query(
-    index_name: str,
-    query_text: str,
-    columns: List[str],
-    num_results: int,
-    filters: Optional[Any] = None,
-) -> List[Dict[str, Any]]:
-    """Call Vector Search REST API for FULL_TEXT queries and return rows as list[dict]."""
-    host, token = _get_dbx_auth()
-    url = f"{host}/api/2.0/vector-search/indexes/{index_name}/query"
-
-    payload: Dict[str, Any] = {
-        "query_text": query_text,
-        "query_type": "FULL_TEXT",
-        "columns": columns,
-        "num_results": min(int(num_results), VS_FULL_TEXT_MAX_RESULTS),
-    }
-    if filters is not None:
-        payload["filters"] = filters
-
-    resp = requests.post(
-        url,
-        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
-        json=payload,
-        timeout=VS_REQUEST_TIMEOUT_SECS,
-    )
-    resp.raise_for_status()
-    data = resp.json()
-
-    result = data.get("result") or data
-    colnames = result.get("column_names") or columns
-    rows = result.get("data_array") or result.get("data") or []
-
-    out: List[Dict[str, Any]] = []
-    for row in rows:
-        d = {colnames[i]: row[i] for i in range(min(len(colnames), len(row)))}
-        out.append(d)
-    return out
-
-
-# ============================================================
-# LEXICAL FALLBACK (FULL_TEXT via SDK)
+# LEXICAL FALLBACK (Hybrid Search via SDK)
 # ============================================================
 def lexical_fallback(
     query: str, 
     hits: List[Dict[str, Any]], 
     limit: int = LEX_FALLBACK_LIMIT,
     filters: Optional[Dict[str, str]] = None,
+    query_vector: Optional[List[float]] = None,
 ) -> List[Dict[str, Any]]:
+    """
+    Best-effort: agrega matches léxicos desde Vector Search index (hybrid).
+    Merge + dedupe con hits existentes.
+    
+    Usa query_type="hybrid" (GA) que combina keyword + semántico.
+    Si el index tiene embeddings self-managed (sin modelo asociado),
+    query_vector es necesario para que hybrid funcione.
+    """
     q = (query or "").strip()
     if not q:
         return hits
 
     try:
-        index = _get_index()
         kwargs = {
             "query_text": q,
             "columns": VS_COLUMNS,
             "num_results": min(int(limit), VS_FULL_TEXT_MAX_RESULTS),
-            "filters": filters,
+            "query_type": "hybrid",
         }
+        if filters is not None:
+            kwargs["filters"] = filters
+        if query_vector is not None:
+            kwargs["query_vector"] = query_vector
 
-        # Intentar FULL_TEXT (puro léxico, ideal)
-        # Si el workspace no soporta el beta, caer a hybrid
-        try:
-            res = index.similarity_search(**kwargs, query_type="FULL_TEXT")
-        except Exception as ft_err:
-            if "400" in str(ft_err) or "Bad Request" in str(ft_err):
-                logger.info("[retriever] FULL_TEXT no soportado, usando hybrid")
-                res = index.similarity_search(**kwargs, query_type="hybrid")
-            else:
-                raise ft_err
-
+        res = _similarity_search_with_retry(**kwargs)
         rows = parse_vs_similarity_response(res)
     except Exception as e:
         logger.warning(f"[retriever] Lexical fallback failed: {repr(e)}")
@@ -847,6 +819,14 @@ def _retrieve_single_query(query: str, k: int = TOP_K_CANDIDATES) -> List[Dict[s
             extra={"error": repr(e), "query": query[:100]}
         )
     
+    # --- Fallback: si la expansión falló, embedear la query cruda ---
+    if qvec is None:
+        try:
+            qvec = embed_query(query_normalized)
+            logger.info("[retriever] Embedding generado desde query cruda (fallback)")
+        except Exception as e:
+            logger.warning(f"[retriever] Embedding fallback también falló: {repr(e)}")
+    
     # ================================================================
     # PASADA 1: CON filtro temporal (solo si hay fecha detectada)
     # ================================================================
@@ -854,8 +834,7 @@ def _retrieve_single_query(query: str, k: int = TOP_K_CANDIDATES) -> List[Dict[s
     
     if date_filter and qvec:
         try:
-            index = _get_index()
-            res = index.similarity_search(
+            res = _similarity_search_with_retry(
                 query_vector=qvec,
                 columns=VS_COLUMNS,
                 num_results=k,
@@ -881,7 +860,8 @@ def _retrieve_single_query(query: str, k: int = TOP_K_CANDIDATES) -> List[Dict[s
         
         # Lexical fallback CON filtro
         hits_filtered = lexical_fallback(
-            q_fulltext, hits_filtered, limit=LEX_FALLBACK_LIMIT, filters=date_filter
+            q_fulltext, hits_filtered, limit=LEX_FALLBACK_LIMIT, 
+            filters=date_filter, query_vector=qvec
         )
 
     # ================================================================
@@ -891,8 +871,7 @@ def _retrieve_single_query(query: str, k: int = TOP_K_CANDIDATES) -> List[Dict[s
     
     if qvec:
         try:
-            index = _get_index()
-            res = index.similarity_search(
+            res = _similarity_search_with_retry(
                 query_vector=qvec,
                 columns=VS_COLUMNS,
                 num_results=k,
@@ -917,7 +896,10 @@ def _retrieve_single_query(query: str, k: int = TOP_K_CANDIDATES) -> List[Dict[s
             hits_unfiltered = []
     
     # Lexical fallback SIN filtro
-    hits_unfiltered = lexical_fallback(q_fulltext, hits_unfiltered, limit=LEX_FALLBACK_LIMIT)
+    hits_unfiltered = lexical_fallback(
+        q_fulltext, hits_unfiltered, limit=LEX_FALLBACK_LIMIT,
+        query_vector=qvec
+    )
 
     # ================================================================
     # PASADA 3: Búsqueda léxica focalizada por ANCHORS
@@ -933,12 +915,14 @@ def _retrieve_single_query(query: str, k: int = TOP_K_CANDIDATES) -> List[Dict[s
             # Con filtro temporal si existe
             if date_filter:
                 hits_anchor = lexical_fallback(
-                    q_anchors, hits_anchor, limit=LEX_FALLBACK_LIMIT, filters=date_filter
+                    q_anchors, hits_anchor, limit=LEX_FALLBACK_LIMIT, 
+                    filters=date_filter, query_vector=qvec
                 )
             
             # Sin filtro (complementario)
             hits_anchor = lexical_fallback(
-                q_anchors, hits_anchor, limit=LEX_FALLBACK_LIMIT
+                q_anchors, hits_anchor, limit=LEX_FALLBACK_LIMIT,
+                query_vector=qvec
             )
     except Exception as e:
         logger.warning(f"[retriever] Anchor search failed: {repr(e)}")
