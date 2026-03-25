@@ -3,6 +3,9 @@ resources:
     deploy_rag_agent_job:
       name: deploy_rag_agent
 
+      run_as:
+        service_principal_name: ${var.run_as_service_principal}
+
       # trigger:
       #   # Run this job every day, exactly one day from the last run; see https://docs.databricks.com/api/workspace/jobs/create#trigger
       #   periodic:
