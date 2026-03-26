@@ -62,21 +62,22 @@ variables:
   sql_warehouse:
     description: "SQL warehouse ID"
   serving_sp_secret_scope:
-    description: "Secret scrope donde está guardado el secret para autenticacion"   
+    description: "Secret scope donde está guardado el secret para autenticacion"   
   serving_sp_secret_key:
     description: "Secret key donde está guardado el secret para autenticacion"     
   create_sp_secret:
     description: "Flag dedicado para crear el secret en caso de que no exista y guardarlo en el secret scope"
-  run_as_service_principal:
-    description: "Service principal application ID que ejecuta el job"
 
 targets:
+  # ---------------------------------------------------------------
+  # dev: deploy y ejecución como tu usuario personal
+  # Uso: databricks bundle deploy -t dev --profile dev-sso
+  # ---------------------------------------------------------------
   dev:
     mode: development
     default: true
     workspace:
       host: https://dbc-56f60291-144c.cloud.databricks.com
-      root_path: /Workspace/Users/52db1d3b-bab4-49e7-a116-6f65347fed66/.bundle/${bundle.name}/${bundle.target}
     variables:
       catalog: bind_agent
       schema: docs
@@ -89,14 +90,21 @@ targets:
       serving_sp_secret_scope: bind-agent-secrets
       serving_sp_secret_key: sp-bind-rag-agent-client-secret
       create_sp_secret: False
-      run_as_service_principal: 52db1d3b-bab4-49e7-a116-6f65347fed66
 
+  # ---------------------------------------------------------------
+  # dev-sp: deploy y ejecución como el Service Principal
+  # Uso: databricks bundle deploy -t dev-sp --profile dev-sso
+  # ---------------------------------------------------------------
   dev-sp:
-    # mode: development
-    default: true
+    default: false
     workspace:
       host: https://dbc-56f60291-144c.cloud.databricks.com
       root_path: /Workspace/Users/52db1d3b-bab4-49e7-a116-6f65347fed66/.bundle/${bundle.name}/${bundle.target}
+    resources:
+      jobs:
+        deploy_rag_agent_job:
+          run_as:
+            service_principal_name: 52db1d3b-bab4-49e7-a116-6f65347fed66
     variables:
       catalog: bind_agent
       schema: docs
@@ -109,8 +117,10 @@ targets:
       serving_sp_secret_scope: bind-agent-secrets
       serving_sp_secret_key: sp-bind-rag-agent-client-secret
       create_sp_secret: False
-      run_as_service_principal: 52db1d3b-bab4-49e7-a116-6f65347fed66
 
+  # ---------------------------------------------------------------
+  # dev-bind: ambiente de desarrollo en workspace BIND
+  # ---------------------------------------------------------------
   dev-bind:
     mode: development
     default: false
@@ -128,4 +138,3 @@ targets:
       serving_sp_secret_scope: bind-agent-secrets
       serving_sp_secret_key: sp-bind-rag-agent-client-secret
       create_sp_secret: False
-
