@@ -138,3 +138,32 @@ targets:
       serving_sp_secret_scope: bind-agent-secrets
       serving_sp_secret_key: sp-bind-rag-agent-client-secret
       create_sp_secret: False
+
+  # ---------------------------------------------------------------
+  # dev-sp: deploy y ejecución como el Service Principal
+  # dev-bind: ambiente de desarrollo en workspace BIND
+  # ---------------------------------------------------------------
+
+  dev-sp-bind:
+    default: false
+    workspace:
+      host: https://bind-dev.cloud.databricks.com
+      root_path: /Workspace/Users/16c27301-eef3-4310-a0bf-11ad51cb1bc4/.bundle/${bundle.name}/${bundle.target}
+    resources:
+      jobs:
+        deploy_rag_agent_job:
+          run_as:
+            service_principal_name: 3058ba52-ce3d-47f2-8603-0aaf9f333091
+    variables:
+      catalog: dev_sandbox
+      schema: docs
+      vs_index_full_name: dev_sandbox.docs.pdf_chunks_vs_idx
+      llm_endpoint: databricks-gpt-5-1
+      rag_sql_table: dev_sandbox.docs.silver_excel
+      delta_log_table: dev_sandbox.docs.rag_query_log
+      sql_warehouse: 258ac74472ffef98
+      uc_model_name: dev_sandbox.docs.rag_agent
+      serving_sp_name: sp-agent-serving-executor
+      serving_sp_secret_scope: bind-agent-secrets
+      serving_sp_secret_key: sp-bind-rag-agent-client-secret
+      create_sp_secret: True
