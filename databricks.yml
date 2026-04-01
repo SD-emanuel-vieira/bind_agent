@@ -61,6 +61,8 @@ variables:
     description: "Delta table used for SQL log"
   sql_warehouse:
     description: "SQL warehouse ID"
+  serving_sp_name:
+    description: "Service prinicpal del agente"   
   serving_sp_secret_scope:
     description: "Secret scope donde está guardado el secret para autenticacion"   
   serving_sp_secret_key:
@@ -143,12 +145,11 @@ targets:
   # dev-sp: deploy y ejecución como el Service Principal
   # dev-bind: ambiente de desarrollo en workspace BIND
   # ---------------------------------------------------------------
-
   dev-sp-bind:
     default: false
     workspace:
       host: https://bind-dev.cloud.databricks.com
-      root_path: /Workspace/Users/16c27301-eef3-4310-a0bf-11ad51cb1bc4/.bundle/${bundle.name}/${bundle.target}
+      root_path: /Workspace/Users/3058ba52-ce3d-47f2-8603-0aaf9f333091/.bundle/${bundle.name}/${bundle.target}
     resources:
       jobs:
         deploy_rag_agent_job:
