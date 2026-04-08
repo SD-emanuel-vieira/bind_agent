@@ -105,6 +105,9 @@ targets:
     resources:
       jobs:
         deploy_rag_agent_job:
+          permissions:
+            - user_name: emanuel.vieira@sunnydata.ai
+              level: CAN_MANAGE
           run_as:
             service_principal_name: 52db1d3b-bab4-49e7-a116-6f65347fed66
     variables:
@@ -116,6 +119,7 @@ targets:
       delta_log_table: bind_agent.docs.rag_query_log
       sql_warehouse: 1b632a5315f277d9
       uc_model_name: bind_agent.docs.rag_agent
+      serving_sp_name: sp-agent-serving-executor
       serving_sp_secret_scope: bind-agent-secrets
       serving_sp_secret_key: sp-bind-rag-agent-client-secret
       create_sp_secret: False
@@ -149,7 +153,7 @@ targets:
     default: false
     workspace:
       host: https://bind-dev.cloud.databricks.com
-      root_path: /Workspace/Users/3058ba52-ce3d-47f2-8603-0aaf9f333091/.bundle/${bundle.name}/${bundle.target}
+      root_path: /Workspace/Shared/.bundle/${bundle.name}/${bundle.target}
     resources:
       jobs:
         deploy_rag_agent_job:
@@ -167,4 +171,4 @@ targets:
       serving_sp_name: sp-agent-serving-executor
       serving_sp_secret_scope: bind-agent-secrets
       serving_sp_secret_key: sp-bind-rag-agent-client-secret
-      create_sp_secret: True
+      create_sp_secret: False
